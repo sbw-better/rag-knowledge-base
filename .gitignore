@@ -1,0 +1,47 @@
+# Maven / Java
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.log
+hs_err_pid*
+replay_pid*
+
+# IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local environment
+.env
+.env.*
+!.env.example
+application-local.yml
+application-*.local.yml
+
+# Docker / runtime data
+docker-data/
+data/
+logs/
+tmp/
+*.pid
+
+# Test and coverage output
+coverage/
+.coverage
+jacoco.exec
+
+# Build tool caches
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar

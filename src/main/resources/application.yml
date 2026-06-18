@@ -1,0 +1,62 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: rag-knowledge-base
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/ragkb}
+    username: ${DB_USERNAME:rag}
+    password: ${DB_PASSWORD:rag}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+  servlet:
+    multipart:
+      max-file-size: ${APP_MAX_FILE_SIZE:50MB}
+      max-request-size: ${APP_MAX_REQUEST_SIZE:50MB}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  security:
+    jwt-secret: ${JWT_SECRET:change-me-change-me-change-me-change-me}
+    jwt-expiration-minutes: ${JWT_EXPIRATION_MINUTES:1440}
+  storage:
+    endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+    access-key: ${MINIO_ACCESS_KEY:minioadmin}
+    secret-key: ${MINIO_SECRET_KEY:minioadmin}
+    bucket: ${MINIO_BUCKET:rag-documents}
+  model:
+    base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+    api-key: ${OPENAI_API_KEY:}
+    chat-model: ${OPENAI_CHAT_MODEL:gpt-4o-mini}
+    embedding-model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
+    embedding-dimensions: ${OPENAI_EMBEDDING_DIMENSIONS:1536}
+  ingestion:
+    worker-enabled: ${INGESTION_WORKER_ENABLED:true}
+    fixed-delay-ms: ${INGESTION_FIXED_DELAY_MS:5000}
+    max-attempts: ${INGESTION_MAX_ATTEMPTS:3}
+    batch-size: ${INGESTION_BATCH_SIZE:3}
+  retrieval:
+    vector-weight: ${RETRIEVAL_VECTOR_WEIGHT:0.65}
+    keyword-weight: ${RETRIEVAL_KEYWORD_WEIGHT:0.35}
+
+logging:
+  level:
+    com.example.rag: INFO
