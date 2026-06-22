@@ -16,7 +16,7 @@ import com.example.rag.knowledge.KnowledgeBaseService;
 import com.example.rag.repository.DocumentRepository;
 import com.example.rag.repository.RagTaskRepository;
 import com.example.rag.storage.StorageService;
-import lombok.RequiredArgsConstructor;
+import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -25,13 +25,22 @@ import java.util.Objects;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 public class DocumentService {
+    public DocumentService(KnowledgeBaseService knowledgeBaseService, DocumentRepository documentRepository, RagTaskRepository taskRepository, StorageService storageService, AppProperties properties, EntityManager entityManager) {
+        this.knowledgeBaseService = knowledgeBaseService;
+        this.documentRepository = documentRepository;
+        this.taskRepository = taskRepository;
+        this.storageService = storageService;
+        this.properties = properties;
+        this.entityManager = entityManager;
+    }
+
     private final KnowledgeBaseService knowledgeBaseService;
     private final DocumentRepository documentRepository;
     private final RagTaskRepository taskRepository;
     private final StorageService storageService;
     private final AppProperties properties;
+    private final EntityManager entityManager;
 
     @Transactional
     public ApiDtos.UploadResponse upload(UUID knowledgeBaseId, MultipartFile file) {
@@ -52,7 +61,7 @@ public class DocumentService {
         document.setSizeBytes(file.getSize());
         document.setStatus(DocumentStatus.UPLOADED);
         document.setObjectKey(storageService.store(file, user.getTenant().getId(), document.getId()));
-        documentRepository.save(document);
+        entityManager.persist(document);
 
         RagTask task = new RagTask();
         task.setTenant(user.getTenant());

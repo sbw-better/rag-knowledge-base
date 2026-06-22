@@ -4,15 +4,20 @@ import com.example.rag.domain.KnowledgeBase;
 import com.example.rag.dto.ApiDtos;
 import com.example.rag.knowledge.KnowledgeBaseService;
 import com.example.rag.model.EmbeddingClient;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 public class SearchService {
+    public SearchService(KnowledgeBaseService knowledgeBaseService, EmbeddingClient embeddingClient, VectorIndexService vectorIndexService, RetrievalFusionService fusionService) {
+        this.knowledgeBaseService = knowledgeBaseService;
+        this.embeddingClient = embeddingClient;
+        this.vectorIndexService = vectorIndexService;
+        this.fusionService = fusionService;
+    }
+
     private final KnowledgeBaseService knowledgeBaseService;
     private final EmbeddingClient embeddingClient;
     private final VectorIndexService vectorIndexService;

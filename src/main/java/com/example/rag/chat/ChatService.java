@@ -20,7 +20,6 @@ import com.example.rag.repository.MessageCitationRepository;
 import com.example.rag.repository.MessageRepository;
 import com.example.rag.retrieval.SearchCandidate;
 import com.example.rag.retrieval.SearchService;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,8 +29,19 @@ import java.util.List;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 public class ChatService {
+    public ChatService(KnowledgeBaseService knowledgeBaseService, SearchService searchService, PromptBuilder promptBuilder, LlmClient llmClient, ConversationRepository conversationRepository, MessageRepository messageRepository, MessageCitationRepository citationRepository, DocumentRepository documentRepository, DocumentChunkRepository chunkRepository) {
+        this.knowledgeBaseService = knowledgeBaseService;
+        this.searchService = searchService;
+        this.promptBuilder = promptBuilder;
+        this.llmClient = llmClient;
+        this.conversationRepository = conversationRepository;
+        this.messageRepository = messageRepository;
+        this.citationRepository = citationRepository;
+        this.documentRepository = documentRepository;
+        this.chunkRepository = chunkRepository;
+    }
+
     private final KnowledgeBaseService knowledgeBaseService;
     private final SearchService searchService;
     private final PromptBuilder promptBuilder;

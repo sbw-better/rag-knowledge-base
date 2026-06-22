@@ -7,7 +7,6 @@ import io.minio.GetObjectArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -15,8 +14,12 @@ import java.io.InputStream;
 import java.util.UUID;
 
 @Component
-@RequiredArgsConstructor
 public class StorageService {
+    public StorageService(MinioClient minioClient, AppProperties properties) {
+        this.minioClient = minioClient;
+        this.properties = properties;
+    }
+
     private final MinioClient minioClient;
     private final AppProperties properties;
 

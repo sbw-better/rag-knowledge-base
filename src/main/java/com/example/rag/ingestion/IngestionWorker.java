@@ -14,11 +14,12 @@ import com.example.rag.repository.RagTaskRepository;
 import com.example.rag.retrieval.VectorIndexService;
 import com.example.rag.storage.StorageService;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.InputStream;
 import java.time.Instant;
@@ -27,8 +28,21 @@ import java.util.Map;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 public class IngestionWorker {
+    private static final Logger log = LoggerFactory.getLogger(IngestionWorker.class);
+
+    public IngestionWorker(RagTaskRepository taskRepository, DocumentRepository documentRepository, StorageService storageService, DocumentParserService parserService, TextChunker textChunker, EmbeddingClient embeddingClient, VectorIndexService vectorIndexService, AppProperties properties, TransactionTemplate transactionTemplate) {
+        this.taskRepository = taskRepository;
+        this.documentRepository = documentRepository;
+        this.storageService = storageService;
+        this.parserService = parserService;
+        this.textChunker = textChunker;
+        this.embeddingClient = embeddingClient;
+        this.vectorIndexService = vectorIndexService;
+        this.properties = properties;
+        this.transactionTemplate = transactionTemplate;
+    }
+
     private final RagTaskRepository taskRepository;
     private final DocumentRepository documentRepository;
     private final StorageService storageService;
@@ -37,9 +51,9 @@ public class IngestionWorker {
     private final EmbeddingClient embeddingClient;
     private final VectorIndexService vectorIndexService;
     private final AppProperties properties;
+    private final TransactionTemplate transactionTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Transactional
     @Scheduled(fixedDelayString = "${app.ingestion.fixed-delay-ms:5000}")
     public void run() {
         if (!properties.ingestion().workerEnabled()) {
@@ -47,15 +61,16 @@ public class IngestionWorker {
         }
         List<RagTask> tasks = taskRepository.findRunnable(TaskStatus.PENDING, PageRequest.of(0, properties.ingestion().batchSize()));
         for (RagTask task : tasks) {
-            process(task.getId());
+            transactionTemplate.executeWithoutResult(status -> process(task.getId()));
         }
     }
 
-    @Transactional
-    public void process(UUID taskId) {
+    void process(UUID taskId) {
         RagTask task = taskRepository.findById(taskId).orElseThrow();
         DocumentEntity document = task.getDocument();
         try {
+            log.info("Starting ingestion task. taskId={}, documentId={}, fileName={}",
+                    task.getId(), document.getId(), document.getFileName());
             task.setStatus(TaskStatus.RUNNING);
             task.setAttempts(task.getAttempts() + 1);
             task.setStartedAt(Instant.now());
@@ -83,7 +98,17 @@ public class IngestionWorker {
             document.setErrorMessage(null);
             task.setStatus(TaskStatus.SUCCEEDED);
             task.setFinishedAt(Instant.now());
-        } catch (Exception ex) {
+            task.setErrorMessage(null);
+            log.info("Ingestion task succeeded. taskId={}, documentId={}, chunks={}",
+                    task.getId(), document.getId(), chunks.size());
+        } catch (Throwable ex) {
+            log.error("Ingestion task failed. taskId={}, documentId={}, fileName={}, attempt={}/{}",
+                    task.getId(),
+                    document.getId(),
+                    document.getFileName(),
+                    task.getAttempts(),
+                    task.getMaxAttempts(),
+                    ex);
             document.setStatus(DocumentStatus.FAILED);
             document.setErrorMessage(ex.getMessage());
             task.setErrorMessage(ex.getMessage());

@@ -11,16 +11,10 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 import java.time.Instant;
 import java.util.UUID;
 
-@Getter
-@Setter
-@NoArgsConstructor
 @Entity
 @Table(name = "knowledge_base_members")
 public class KnowledgeBaseMember {
@@ -44,4 +38,46 @@ public class KnowledgeBaseMember {
     void prePersist() {
         createdAt = Instant.now();
     }
+    // Generated accessors
+
+    public UUID getId() {
+        return id;
+    }
+
+    public void setId(UUID id) {
+        this.id = id;
+    }
+
+    public KnowledgeBase getKnowledgeBase() {
+        return knowledgeBase;
+    }
+
+    public void setKnowledgeBase(KnowledgeBase knowledgeBase) {
+        this.knowledgeBase = knowledgeBase;
+    }
+
+    public UserAccount getUser() {
+        return user;
+    }
+
+    public void setUser(UserAccount user) {
+        this.user = user;
+    }
+
+    public KbPermission getPermission() {
+        return permission;
+    }
+
+    public void setPermission(KbPermission permission) {
+        this.permission = permission;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
 }

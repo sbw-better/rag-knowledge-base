@@ -10,16 +10,10 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 import java.time.Instant;
 import java.util.UUID;
 
-@Getter
-@Setter
-@NoArgsConstructor
 @Entity
 @Table(name = "message_citations")
 public class MessageCitation {
@@ -51,4 +45,78 @@ public class MessageCitation {
     void prePersist() {
         createdAt = Instant.now();
     }
+    // Generated accessors
+
+    public UUID getId() {
+        return id;
+    }
+
+    public void setId(UUID id) {
+        this.id = id;
+    }
+
+    public MessageEntity getMessage() {
+        return message;
+    }
+
+    public void setMessage(MessageEntity message) {
+        this.message = message;
+    }
+
+    public DocumentEntity getDocument() {
+        return document;
+    }
+
+    public void setDocument(DocumentEntity document) {
+        this.document = document;
+    }
+
+    public DocumentChunk getChunk() {
+        return chunk;
+    }
+
+    public void setChunk(DocumentChunk chunk) {
+        this.chunk = chunk;
+    }
+
+    public String getFileName() {
+        return fileName;
+    }
+
+    public void setFileName(String fileName) {
+        this.fileName = fileName;
+    }
+
+    public int getChunkIndex() {
+        return chunkIndex;
+    }
+
+    public void setChunkIndex(int chunkIndex) {
+        this.chunkIndex = chunkIndex;
+    }
+
+    public double getScore() {
+        return score;
+    }
+
+    public void setScore(double score) {
+        this.score = score;
+    }
+
+    public String getSnippet() {
+        return snippet;
+    }
+
+    public void setSnippet(String snippet) {
+        this.snippet = snippet;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
 }

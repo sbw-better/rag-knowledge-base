@@ -10,7 +10,6 @@ import com.example.rag.domain.UserAccount;
 import com.example.rag.dto.ApiDtos;
 import com.example.rag.repository.KnowledgeBaseMemberRepository;
 import com.example.rag.repository.KnowledgeBaseRepository;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,8 +17,12 @@ import java.util.List;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 public class KnowledgeBaseService {
+    public KnowledgeBaseService(KnowledgeBaseRepository knowledgeBaseRepository, KnowledgeBaseMemberRepository memberRepository) {
+        this.knowledgeBaseRepository = knowledgeBaseRepository;
+        this.memberRepository = memberRepository;
+    }
+
     private final KnowledgeBaseRepository knowledgeBaseRepository;
     private final KnowledgeBaseMemberRepository memberRepository;
 

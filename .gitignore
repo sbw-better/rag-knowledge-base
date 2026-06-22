@@ -45,3 +45,11 @@ jacoco.exec
 # Build tool caches
 .mvn/timing.properties
 .mvn/wrapper/maven-wrapper.jar
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.env
+frontend/.env.*
+!frontend/.env.example

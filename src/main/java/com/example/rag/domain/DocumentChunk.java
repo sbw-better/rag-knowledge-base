@@ -10,16 +10,10 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 import java.time.Instant;
 import java.util.UUID;
 
-@Getter
-@Setter
-@NoArgsConstructor
 @Entity
 @Table(name = "document_chunks")
 public class DocumentChunk {
@@ -52,4 +46,70 @@ public class DocumentChunk {
     void prePersist() {
         createdAt = Instant.now();
     }
+    // Generated accessors
+
+    public UUID getId() {
+        return id;
+    }
+
+    public void setId(UUID id) {
+        this.id = id;
+    }
+
+    public Tenant getTenant() {
+        return tenant;
+    }
+
+    public void setTenant(Tenant tenant) {
+        this.tenant = tenant;
+    }
+
+    public KnowledgeBase getKnowledgeBase() {
+        return knowledgeBase;
+    }
+
+    public void setKnowledgeBase(KnowledgeBase knowledgeBase) {
+        this.knowledgeBase = knowledgeBase;
+    }
+
+    public DocumentEntity getDocument() {
+        return document;
+    }
+
+    public void setDocument(DocumentEntity document) {
+        this.document = document;
+    }
+
+    public int getChunkIndex() {
+        return chunkIndex;
+    }
+
+    public void setChunkIndex(int chunkIndex) {
+        this.chunkIndex = chunkIndex;
+    }
+
+    public String getContent() {
+        return content;
+    }
+
+    public void setContent(String content) {
+        this.content = content;
+    }
+
+    public String getMetadataJson() {
+        return metadataJson;
+    }
+
+    public void setMetadataJson(String metadataJson) {
+        this.metadataJson = metadataJson;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
 }

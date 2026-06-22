@@ -4,7 +4,6 @@ import com.example.rag.common.ApiResponse;
 import com.example.rag.document.DocumentService;
 import com.example.rag.dto.ApiDtos;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,8 +21,12 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/knowledge-bases")
-@RequiredArgsConstructor
 public class KnowledgeBaseController {
+    public KnowledgeBaseController(KnowledgeBaseService knowledgeBaseService, DocumentService documentService) {
+        this.knowledgeBaseService = knowledgeBaseService;
+        this.documentService = documentService;
+    }
+
     private final KnowledgeBaseService knowledgeBaseService;
     private final DocumentService documentService;
 

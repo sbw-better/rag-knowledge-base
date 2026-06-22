@@ -3,7 +3,6 @@ package com.example.rag.retrieval;
 import com.example.rag.domain.DocumentChunk;
 import com.example.rag.domain.DocumentEntity;
 import com.example.rag.repository.DocumentChunkRepository;
-import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,14 +11,19 @@ import java.util.List;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 public class VectorIndexService {
+    public VectorIndexService(JdbcTemplate jdbcTemplate, DocumentChunkRepository chunkRepository) {
+        this.jdbcTemplate = jdbcTemplate;
+        this.chunkRepository = chunkRepository;
+    }
+
     private final JdbcTemplate jdbcTemplate;
     private final DocumentChunkRepository chunkRepository;
 
     @Transactional
     public void deleteByDocument(UUID documentId) {
         chunkRepository.deleteByDocument_Id(documentId);
+        chunkRepository.flush();
     }
 
     @Transactional
@@ -31,9 +35,12 @@ public class VectorIndexService {
         chunk.setChunkIndex(index);
         chunk.setContent(content);
         chunk.setMetadataJson(metadataJson);
-        chunkRepository.save(chunk);
-        jdbcTemplate.update("update document_chunks set embedding = ?::vector where id = ?",
+        chunkRepository.saveAndFlush(chunk);
+        int updatedRows = jdbcTemplate.update("update document_chunks set embedding = ?::vector where id = ?",
                 vectorLiteral(embedding), chunk.getId());
+        if (updatedRows != 1) {
+            throw new IllegalStateException("Failed to update embedding for chunk " + chunk.getId());
+        }
     }
 
     public List<SearchCandidate> vectorSearch(UUID tenantId, UUID knowledgeBaseId, List<Double> embedding, int topK) {

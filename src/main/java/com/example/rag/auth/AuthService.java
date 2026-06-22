@@ -8,14 +8,20 @@ import com.example.rag.dto.ApiDtos;
 import com.example.rag.repository.RoleRepository;
 import com.example.rag.repository.TenantRepository;
 import com.example.rag.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@RequiredArgsConstructor
 public class AuthService {
+    public AuthService(TenantRepository tenantRepository, UserRepository userRepository, RoleRepository roleRepository, PasswordEncoder passwordEncoder, JwtService jwtService) {
+        this.tenantRepository = tenantRepository;
+        this.userRepository = userRepository;
+        this.roleRepository = roleRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.jwtService = jwtService;
+    }
+
     private static final String DEFAULT_TENANT = "Default";
 
     private final TenantRepository tenantRepository;

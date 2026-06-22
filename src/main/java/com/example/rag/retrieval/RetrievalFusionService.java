@@ -1,7 +1,6 @@
 package com.example.rag.retrieval;
 
 import com.example.rag.config.AppProperties;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
@@ -11,9 +10,12 @@ import java.util.Map;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 public class RetrievalFusionService {
     private final AppProperties properties;
+
+    public RetrievalFusionService(AppProperties properties) {
+        this.properties = properties;
+    }
 
     public List<SearchCandidate> fuse(List<SearchCandidate> vectorHits, List<SearchCandidate> keywordHits, int topK) {
         Map<UUID, MutableHit> merged = new LinkedHashMap<>();
