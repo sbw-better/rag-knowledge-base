@@ -15,6 +15,12 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * 知识库成员授权实体。
+ *
+ * <p>当前前端还没有成员管理页面，但后端已经预留该表。知识库访问判断会同时考虑 owner、
+ * ADMIN 角色和成员表记录。后续要实现“把某个知识库授权给某个普通用户”，就会写入这里。</p>
+ */
 @Entity
 @Table(name = "knowledge_base_members")
 public class KnowledgeBaseMember {
@@ -30,6 +36,9 @@ public class KnowledgeBaseMember {
     @JoinColumn(name = "user_id")
     private UserAccount user;
 
+    /**
+     * 用户在该知识库下的权限级别，例如只读、编辑、管理。
+     */
     @Enumerated(EnumType.STRING)
     private KbPermission permission;
     private Instant createdAt;

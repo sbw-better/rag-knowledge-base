@@ -17,6 +17,13 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * RAG 异步任务实体。
+ *
+ * <p>MVP 阶段没有引入 MQ，使用数据库表 {@code rag_tasks} 作为轻量任务队列。
+ * 上传文档时创建 PENDING 任务，{@code IngestionWorker} 定时扫描并执行文档解析、切分、
+ * Embedding 和向量入库。</p>
+ */
 @Entity
 @Table(name = "rag_tasks")
 public class RagTask {
@@ -38,11 +45,21 @@ public class RagTask {
     @Enumerated(EnumType.STRING)
     private TaskStatus status;
 
+    /**
+     * 当前已尝试次数和最大尝试次数。失败后未超过上限会重新置为 PENDING 等待下次调度。
+     */
     private int attempts = 0;
     private int maxAttempts = 3;
 
+    /**
+     * 任务失败时的错误摘要，前端任务列表会展示该信息。
+     */
     @Column(columnDefinition = "text")
     private String errorMessage;
+
+    /**
+     * 任务锁定、开始和结束时间，用于排查任务是否卡住、耗时多久。
+     */
     private Instant lockedAt;
     private Instant startedAt;
     private Instant finishedAt;

@@ -15,6 +15,12 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * 知识库实体。
+ *
+ * <p>知识库是业务资料的隔离单元。一个知识库通常对应一个业务场景，例如客服知识库、
+ * 医疗服务知识库、产品手册知识库。文档、切片、检索、问答都通过 knowledgeBaseId 归属到这里。</p>
+ */
 @Entity
 @Table(name = "knowledge_bases")
 public class KnowledgeBase {
@@ -33,14 +39,27 @@ public class KnowledgeBase {
     private String name;
     private String description;
 
+    /**
+     * 文档入库时的默认切片长度。修改后只影响后续新上传或重新入库的文档。
+     */
     @Column(name = "chunk_size")
     private int chunkSize = 800;
 
+    /**
+     * 相邻切片之间保留的重叠字符数，用于减少语义在切片边界处断裂。
+     */
     @Column(name = "chunk_overlap")
     private int chunkOverlap = 120;
 
+    /**
+     * 检索和问答默认召回片段数量。维护者可以在设置页长期调整该值。
+     */
     @Column(name = "top_k")
     private int topK = 8;
+
+    /**
+     * 逻辑删除标记。删除知识库时不物理删除记录，便于审计和后续恢复策略扩展。
+     */
     private boolean deleted = false;
     private Instant createdAt;
     private Instant updatedAt;

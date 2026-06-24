@@ -16,6 +16,12 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * 会话消息实体。
+ *
+ * <p>一轮问答会产生至少两条消息：用户消息 USER 和助手消息 ASSISTANT。
+ * 助手消息如果来自 RAG 问答，还会关联若干 {@link MessageCitation} 作为引用来源。</p>
+ */
 @Entity
 @Table(name = "messages")
 public class MessageEntity {
@@ -30,9 +36,15 @@ public class MessageEntity {
     @Enumerated(EnumType.STRING)
     private MessageRole role;
 
+    /**
+     * 消息正文。用户消息保存问题，助手消息保存模型回答。
+     */
     @Column(columnDefinition = "text")
     private String content;
 
+    /**
+     * 预留扩展字段，可保存模型参数、token 用量、调试信息等结构化 JSON。
+     */
     @Column(columnDefinition = "text")
     private String metadataJson;
     private Instant createdAt;

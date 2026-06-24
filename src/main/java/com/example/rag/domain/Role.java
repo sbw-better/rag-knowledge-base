@@ -9,6 +9,12 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * 系统角色实体。
+ *
+ * <p>当前内置 ADMIN 和 USER。角色用于系统级权限判断，例如 ADMIN 可以管理租户内知识库；
+ * 知识库内的成员权限由 {@link KnowledgeBaseMember} 表达。</p>
+ */
 @Entity
 @Table(name = "roles")
 public class Role {

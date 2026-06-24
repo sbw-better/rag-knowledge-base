@@ -23,6 +23,12 @@ public class RetrievalFusionService {
         this.properties = properties;
     }
 
+    /**
+     * 融合向量检索和关键词检索结果。
+     *
+     * <p>向量检索擅长语义相近，关键词检索擅长精确术语、编号、接口名。融合后可以提高召回稳定性，
+     * 也是 RAG 系统里常见的第一版混合检索方案。</p>
+     */
     public List<SearchCandidate> fuse(List<SearchCandidate> vectorHits, List<SearchCandidate> keywordHits, int topK) {
         Map<UUID, MutableHit> merged = new LinkedHashMap<>();
         add(merged, vectorHits, properties.retrieval().vectorWeight(), "VECTOR");

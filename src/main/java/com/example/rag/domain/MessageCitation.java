@@ -14,6 +14,12 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * 回答引用来源实体。
+ *
+ * <p>每条助手回答会保存当次检索命中的文档片段，前端据此展示“答案来自哪些文件、哪些切片”。
+ * 这让 RAG 回答具备可追溯性，用户可以核验答案依据，而不是只看到模型生成文本。</p>
+ */
 @Entity
 @Table(name = "message_citations")
 public class MessageCitation {
@@ -35,8 +41,15 @@ public class MessageCitation {
 
     private String fileName;
     private int chunkIndex;
+
+    /**
+     * 检索分数。不同检索模式下分数含义不同，只用于排序和相对参考。
+     */
     private double score;
 
+    /**
+     * 引用片段摘要。保存摘要而不是完整 chunk，避免会话引用列表过大。
+     */
     @Column(columnDefinition = "text")
     private String snippet;
     private Instant createdAt;

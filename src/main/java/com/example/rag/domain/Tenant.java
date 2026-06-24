@@ -11,6 +11,12 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * 租户实体。
+ *
+ * <p>租户用于隔离不同组织的数据。MVP 阶段默认创建一个 {@code Default} 租户，
+ * 但多数业务表已经保留 tenant_id，后续可以扩展为真正的多租户系统。</p>
+ */
 @Entity
 @Table(name = "tenants")
 public class Tenant {

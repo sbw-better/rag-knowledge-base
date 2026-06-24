@@ -7,6 +7,9 @@ import jakarta.validation.constraints.Size;
 
 /**
  * 创建或更新知识库请求。
+ *
+ * <p>chunkSize、chunkOverlap、topK 是知识库级默认参数。维护者在创建或设置页修改后，
+ * 后续文档入库和检索问答会默认使用这些配置。普通问答用户不需要理解这些技术参数。</p>
  */
 public record KnowledgeBaseRequest(
         @NotBlank @Size(max = 160) String name,

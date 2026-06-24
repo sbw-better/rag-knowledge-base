@@ -9,6 +9,12 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
+/**
+ * 会话历史查询接口。
+ *
+ * <p>问答接口负责追加消息；该接口负责读取某个会话下的完整消息列表和每条助手消息的引用来源。
+ * 会话按当前登录用户隔离，用户只能查看自己的会话。</p>
+ */
 @RestController
 @RequestMapping("/api/conversations")
 public class ConversationController {
@@ -18,6 +24,9 @@ public class ConversationController {
 
     private final ChatService chatService;
 
+    /**
+     * 查询指定会话详情。
+     */
     @GetMapping("/{id}")
     ApiResponse<ConversationResponse> get(@PathVariable UUID id) {
         return ApiResponse.ok(chatService.getConversation(id));

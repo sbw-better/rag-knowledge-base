@@ -15,6 +15,12 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * 上传文档实体。
+ *
+ * <p>该实体保存文档元数据和处理状态，不保存原始文件内容。原始文件保存在 MinIO，
+ * 数据库通过 {@link #objectKey} 记录对象存储路径；解析后的文本切片保存在 {@link DocumentChunk}。</p>
+ */
 @Entity
 @Table(name = "documents")
 public class DocumentEntity {
@@ -35,12 +41,22 @@ public class DocumentEntity {
 
     private String fileName;
     private String contentType;
+
+    /**
+     * MinIO 中的对象路径，通常按 tenant/document/fileName 分层。
+     */
     private String objectKey;
     private long sizeBytes;
 
+    /**
+     * 文档处理状态：上传后为 UPLOADED，入库中为 PROCESSING，完成后为 INDEXED，失败为 FAILED。
+     */
     @Enumerated(EnumType.STRING)
     private DocumentStatus status;
 
+    /**
+     * 解析、Embedding 或向量入库失败时记录的错误摘要，便于前端和日志排查。
+     */
     @Column(columnDefinition = "text")
     private String errorMessage;
     private Instant createdAt;

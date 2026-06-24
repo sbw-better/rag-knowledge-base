@@ -14,6 +14,12 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * 问答会话实体。
+ *
+ * <p>一个会话属于一个用户和一个知识库，用于保存连续问答历史。当前 MVP 的 Chat 接口
+ * 会在没有 conversationId 时自动创建会话，有 conversationId 时把消息追加到已有会话。</p>
+ */
 @Entity
 @Table(name = "conversations")
 public class Conversation {
@@ -33,6 +39,9 @@ public class Conversation {
     @JoinColumn(name = "knowledge_base_id")
     private KnowledgeBase knowledgeBase;
 
+    /**
+     * 会话标题，当前默认取首个问题的前 80 个字符。
+     */
     private String title;
     private Instant createdAt;
     private Instant updatedAt;

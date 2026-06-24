@@ -9,6 +9,9 @@ import java.util.UUID;
 
 /**
  * 检索请求。
+ *
+ * <p>该请求主要用于维护者调试召回效果。mode 决定使用向量、关键词或混合检索；
+ * topK 是一次请求的临时覆盖值，不传时使用知识库默认 topK。</p>
  */
 public record SearchRequest(
         @NotNull UUID knowledgeBaseId,
