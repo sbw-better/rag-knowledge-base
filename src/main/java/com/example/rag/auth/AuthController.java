@@ -1,7 +1,10 @@
 package com.example.rag.auth;
 
 import com.example.rag.common.ApiResponse;
-import com.example.rag.dto.ApiDtos;
+import com.example.rag.auth.dto.AuthResponse;
+import com.example.rag.auth.dto.LoginRequest;
+import com.example.rag.auth.dto.RegisterRequest;
+import com.example.rag.auth.dto.UserResponse;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,17 +22,17 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    ApiResponse<ApiDtos.AuthResponse> register(@Valid @RequestBody ApiDtos.RegisterRequest request) {
+    ApiResponse<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
         return ApiResponse.ok(authService.register(request));
     }
 
     @PostMapping("/login")
-    ApiResponse<ApiDtos.AuthResponse> login(@Valid @RequestBody ApiDtos.LoginRequest request) {
+    ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         return ApiResponse.ok(authService.login(request));
     }
 
     @GetMapping("/me")
-    ApiResponse<ApiDtos.UserResponse> me() {
+    ApiResponse<UserResponse> me() {
         return ApiResponse.ok(authService.me());
     }
 }

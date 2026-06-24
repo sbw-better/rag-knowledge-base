@@ -7,17 +7,29 @@ import com.example.rag.common.NotFoundException;
 import com.example.rag.domain.KnowledgeBase;
 import com.example.rag.domain.Role;
 import com.example.rag.domain.UserAccount;
-import com.example.rag.dto.ApiDtos;
+import com.example.rag.knowledge.dto.KnowledgeBaseRequest;
+import com.example.rag.knowledge.dto.KnowledgeBaseResponse;
 import com.example.rag.repository.KnowledgeBaseMemberRepository;
 import com.example.rag.repository.KnowledgeBaseRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * 知识库应用服务。
+ *
+ * <p>该服务集中处理知识库 CRUD 和访问权限判断。当前版本支持 owner、ADMIN 和
+ * knowledge_base_members 预留成员权限，后续扩展团队协作时应优先复用这里的
+ * {@link #requireAccess(UUID)} 作为统一入口。</p>
+ */
 @Service
 public class KnowledgeBaseService {
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeBaseService.class);
+
     public KnowledgeBaseService(KnowledgeBaseRepository knowledgeBaseRepository, KnowledgeBaseMemberRepository memberRepository) {
         this.knowledgeBaseRepository = knowledgeBaseRepository;
         this.memberRepository = memberRepository;
@@ -27,47 +39,65 @@ public class KnowledgeBaseService {
     private final KnowledgeBaseMemberRepository memberRepository;
 
     @Transactional
-    public ApiDtos.KnowledgeBaseResponse create(ApiDtos.KnowledgeBaseRequest request) {
+    public KnowledgeBaseResponse create(KnowledgeBaseRequest request) {
         UserAccount user = CurrentUser.required();
         KnowledgeBase kb = new KnowledgeBase();
         kb.setTenant(user.getTenant());
         kb.setOwner(user);
         apply(kb, request);
-        return toResponse(knowledgeBaseRepository.save(kb));
+        KnowledgeBase saved = knowledgeBaseRepository.save(kb);
+        log.info("Knowledge base created. tenantId={}, ownerId={}, knowledgeBaseId={}, name={}",
+                user.getTenant().getId(), user.getId(), saved.getId(), saved.getName());
+        return toResponse(saved);
     }
 
-    public List<ApiDtos.KnowledgeBaseResponse> list() {
+    /**
+     * 列出当前用户可访问的知识库。第一版会先按租户查出未删除知识库，再做 owner/admin/member 过滤。
+     */
+    public List<KnowledgeBaseResponse> list() {
         UserAccount user = CurrentUser.required();
-        return knowledgeBaseRepository.findByTenant_IdAndDeletedFalseOrderByCreatedAtDesc(user.getTenant().getId())
+        List<KnowledgeBaseResponse> result = knowledgeBaseRepository.findByTenant_IdAndDeletedFalseOrderByCreatedAtDesc(user.getTenant().getId())
                 .stream()
                 .filter(kb -> canAccess(kb, user))
                 .map(this::toResponse)
                 .toList();
+        log.debug("Knowledge bases listed. tenantId={}, userId={}, count={}",
+                user.getTenant().getId(), user.getId(), result.size());
+        return result;
     }
 
-    public ApiDtos.KnowledgeBaseResponse get(UUID id) {
+    public KnowledgeBaseResponse get(UUID id) {
         return toResponse(requireAccess(id));
     }
 
     @Transactional
-    public ApiDtos.KnowledgeBaseResponse update(UUID id, ApiDtos.KnowledgeBaseRequest request) {
+    public KnowledgeBaseResponse update(UUID id, KnowledgeBaseRequest request) {
         KnowledgeBase kb = requireAccess(id);
-        if (!isOwnerOrAdmin(kb, CurrentUser.required())) {
+        UserAccount user = CurrentUser.required();
+        if (!isOwnerOrAdmin(kb, user)) {
             throw new ForbiddenException("Only owner or admin can update knowledge base");
         }
         apply(kb, request);
+        log.info("Knowledge base updated. tenantId={}, userId={}, knowledgeBaseId={}",
+                kb.getTenant().getId(), user.getId(), kb.getId());
         return toResponse(kb);
     }
 
     @Transactional
     public void delete(UUID id) {
         KnowledgeBase kb = requireAccess(id);
-        if (!isOwnerOrAdmin(kb, CurrentUser.required())) {
+        UserAccount user = CurrentUser.required();
+        if (!isOwnerOrAdmin(kb, user)) {
             throw new ForbiddenException("Only owner or admin can delete knowledge base");
         }
         kb.setDeleted(true);
+        log.info("Knowledge base deleted. tenantId={}, userId={}, knowledgeBaseId={}",
+                kb.getTenant().getId(), user.getId(), kb.getId());
     }
 
+    /**
+     * 查询知识库并校验当前用户是否有访问权限。所有文档、检索、问答入口都应复用该方法。
+     */
     public KnowledgeBase requireAccess(UUID id) {
         UserAccount user = CurrentUser.required();
         KnowledgeBase kb = knowledgeBaseRepository.findByIdAndTenant_IdAndDeletedFalse(id, user.getTenant().getId())
@@ -88,7 +118,7 @@ public class KnowledgeBaseService {
                 || user.getRoles().stream().map(Role::getName).anyMatch("ADMIN"::equals);
     }
 
-    private void apply(KnowledgeBase kb, ApiDtos.KnowledgeBaseRequest request) {
+    private void apply(KnowledgeBase kb, KnowledgeBaseRequest request) {
         kb.setName(request.name().trim());
         kb.setDescription(request.description());
         if (request.chunkSize() != null) {
@@ -105,8 +135,8 @@ public class KnowledgeBaseService {
         }
     }
 
-    public ApiDtos.KnowledgeBaseResponse toResponse(KnowledgeBase kb) {
-        return new ApiDtos.KnowledgeBaseResponse(
+    public KnowledgeBaseResponse toResponse(KnowledgeBase kb) {
+        return new KnowledgeBaseResponse(
                 kb.getId(),
                 kb.getName(),
                 kb.getDescription(),

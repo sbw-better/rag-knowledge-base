@@ -13,6 +13,8 @@ import java.util.UUID;
 public interface RagTaskRepository extends JpaRepository<RagTask, UUID> {
     Optional<RagTask> findByIdAndTenant_Id(UUID id, UUID tenantId);
 
+    Optional<RagTask> findFirstByDocument_IdOrderByCreatedAtDesc(UUID documentId);
+
     @Query("select t from RagTask t where t.status = ?1 and t.attempts < t.maxAttempts order by t.createdAt asc")
     List<RagTask> findRunnable(TaskStatus status, Pageable pageable);
 }

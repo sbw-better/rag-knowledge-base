@@ -27,6 +27,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * 文档异步入库 Worker。
+ *
+ * <p>MVP 阶段没有引入 MQ，而是使用数据库任务表 {@code rag_tasks} 作为轻量队列。
+ * Scheduler 周期性拉取 PENDING 任务并在独立事务中处理，每个任务完成文档解析、
+ * 清洗切分、Embedding 和向量入库。后续迁移 RabbitMQ/Kafka 时，该类的处理逻辑
+ * 可以保留，触发方式替换为消息消费即可。</p>
+ */
 @Service
 public class IngestionWorker {
     private static final Logger log = LoggerFactory.getLogger(IngestionWorker.class);
@@ -60,11 +68,20 @@ public class IngestionWorker {
             return;
         }
         List<RagTask> tasks = taskRepository.findRunnable(TaskStatus.PENDING, PageRequest.of(0, properties.ingestion().batchSize()));
+        if (!tasks.isEmpty()) {
+            log.info("Ingestion worker picked tasks. count={}", tasks.size());
+        }
         for (RagTask task : tasks) {
             transactionTemplate.executeWithoutResult(status -> process(task.getId()));
         }
     }
 
+    /**
+     * 处理单个入库任务。
+     *
+     * <p>这里捕获 {@link Throwable} 是为了保证单个文档失败不会让调度线程退出。
+     * 失败任务会根据 attempts/maxAttempts 决定重新置为 PENDING 还是最终 FAILED。</p>
+     */
     void process(UUID taskId) {
         RagTask task = taskRepository.findById(taskId).orElseThrow();
         DocumentEntity document = task.getDocument();
@@ -83,11 +100,17 @@ public class IngestionWorker {
             try (InputStream inputStream = storageService.open(document.getObjectKey())) {
                 text = parserService.parse(inputStream);
             }
+            log.debug("Document parsed. taskId={}, documentId={}, textLength={}",
+                    task.getId(), document.getId(), text.length());
             List<String> chunks = textChunker.split(text, document.getKnowledgeBase().getChunkSize(),
                     document.getKnowledgeBase().getChunkOverlap());
             if (chunks.isEmpty()) {
                 throw new BadRequestException("Parsed document is empty");
             }
+            log.info("Document chunked. taskId={}, documentId={}, chunks={}, chunkSize={}, overlap={}",
+                    task.getId(), document.getId(), chunks.size(),
+                    document.getKnowledgeBase().getChunkSize(),
+                    document.getKnowledgeBase().getChunkOverlap());
             vectorIndexService.deleteByDocument(document.getId());
             for (int i = 0; i < chunks.size(); i++) {
                 Map<String, Object> metadata = Map.of("fileName", document.getFileName(), "chunkIndex", i);

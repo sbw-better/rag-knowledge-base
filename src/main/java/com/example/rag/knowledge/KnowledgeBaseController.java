@@ -2,7 +2,10 @@ package com.example.rag.knowledge;
 
 import com.example.rag.common.ApiResponse;
 import com.example.rag.document.DocumentService;
-import com.example.rag.dto.ApiDtos;
+import com.example.rag.document.dto.DocumentItem;
+import com.example.rag.document.dto.UploadResponse;
+import com.example.rag.knowledge.dto.KnowledgeBaseRequest;
+import com.example.rag.knowledge.dto.KnowledgeBaseResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -31,24 +34,29 @@ public class KnowledgeBaseController {
     private final DocumentService documentService;
 
     @PostMapping
-    ApiResponse<ApiDtos.KnowledgeBaseResponse> create(@Valid @RequestBody ApiDtos.KnowledgeBaseRequest request) {
+    ApiResponse<KnowledgeBaseResponse> create(@Valid @RequestBody KnowledgeBaseRequest request) {
         return ApiResponse.ok(knowledgeBaseService.create(request));
     }
 
     @GetMapping
-    ApiResponse<List<ApiDtos.KnowledgeBaseResponse>> list() {
+    ApiResponse<List<KnowledgeBaseResponse>> list() {
         return ApiResponse.ok(knowledgeBaseService.list());
     }
 
     @GetMapping("/{id}")
-    ApiResponse<ApiDtos.KnowledgeBaseResponse> get(@PathVariable UUID id) {
+    ApiResponse<KnowledgeBaseResponse> get(@PathVariable UUID id) {
         return ApiResponse.ok(knowledgeBaseService.get(id));
     }
 
+    @GetMapping("/{id}/documents")
+    ApiResponse<List<DocumentItem>> listDocuments(@PathVariable UUID id) {
+        return ApiResponse.ok(documentService.listByKnowledgeBase(id));
+    }
+
     @PatchMapping("/{id}")
-    ApiResponse<ApiDtos.KnowledgeBaseResponse> update(
+    ApiResponse<KnowledgeBaseResponse> update(
             @PathVariable UUID id,
-            @Valid @RequestBody ApiDtos.KnowledgeBaseRequest request) {
+            @Valid @RequestBody KnowledgeBaseRequest request) {
         return ApiResponse.ok(knowledgeBaseService.update(id, request));
     }
 
@@ -59,7 +67,7 @@ public class KnowledgeBaseController {
     }
 
     @PostMapping(value = "/{id}/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    ApiResponse<ApiDtos.UploadResponse> uploadDocument(
+    ApiResponse<UploadResponse> uploadDocument(
             @PathVariable UUID id,
             @RequestParam("file") MultipartFile file) {
         return ApiResponse.ok(documentService.upload(id, file));

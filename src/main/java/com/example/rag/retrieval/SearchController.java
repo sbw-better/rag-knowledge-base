@@ -1,7 +1,8 @@
 package com.example.rag.retrieval;
 
 import com.example.rag.common.ApiResponse;
-import com.example.rag.dto.ApiDtos;
+import com.example.rag.retrieval.dto.SearchRequest;
+import com.example.rag.retrieval.dto.SearchResponse;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,7 +19,7 @@ public class SearchController {
     private final SearchService searchService;
 
     @PostMapping
-    ApiResponse<ApiDtos.SearchResponse> search(@Valid @RequestBody ApiDtos.SearchRequest request) {
+    ApiResponse<SearchResponse> search(@Valid @RequestBody SearchRequest request) {
         return ApiResponse.ok(searchService.search(request));
     }
 }

@@ -61,6 +61,11 @@ export type UploadResponse = {
   task: TaskResponse;
 };
 
+export type DocumentItem = {
+  document: DocumentResponse;
+  task: TaskResponse | null;
+};
+
 export type SearchMode = "VECTOR" | "KEYWORD" | "HYBRID";
 
 export type SearchHit = {

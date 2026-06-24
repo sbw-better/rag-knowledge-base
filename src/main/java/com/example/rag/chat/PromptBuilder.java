@@ -7,8 +7,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * RAG Prompt 构造器。
+ *
+ * <p>该类只负责把检索到的片段组织为模型消息，不直接调用模型。系统提示词要求模型
+ * 仅依据上下文回答，避免在知识库证据不足时编造答案。</p>
+ */
 @Service
 public class PromptBuilder {
+    /**
+     * 构建 OpenAI-compatible chat messages。
+     */
     public List<Map<String, String>> build(String question, List<SearchCandidate> hits) {
         StringBuilder context = new StringBuilder();
         for (int i = 0; i < hits.size(); i++) {

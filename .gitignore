@@ -50,6 +50,9 @@ jacoco.exec
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
 frontend/.env
 frontend/.env.*
 !frontend/.env.example

@@ -9,6 +9,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * 检索结果融合服务。
+ *
+ * <p>当前采用 RRF（Reciprocal Rank Fusion）风格的轻量融合：不同检索通道按排名贡献分数，
+ * 再叠加配置中的向量/关键词权重。它不依赖具体分数尺度，适合 MVP 阶段混合不同来源的召回。</p>
+ */
 @Service
 public class RetrievalFusionService {
     private final AppProperties properties;
@@ -28,6 +34,9 @@ public class RetrievalFusionService {
                 .toList();
     }
 
+    /**
+     * 将单个检索通道结果合并到候选池。相同 chunk 被多路召回时标记为 HYBRID。
+     */
     private static void add(Map<UUID, MutableHit> merged, List<SearchCandidate> hits, double weight, String source) {
         for (int i = 0; i < hits.size(); i++) {
             SearchCandidate hit = hits.get(i);

@@ -1,7 +1,8 @@
 package com.example.rag.chat;
 
 import com.example.rag.common.ApiResponse;
-import com.example.rag.dto.ApiDtos;
+import com.example.rag.chat.dto.ChatRequest;
+import com.example.rag.chat.dto.ChatResponse;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,7 +19,7 @@ public class ChatController {
     private final ChatService chatService;
 
     @PostMapping
-    ApiResponse<ApiDtos.ChatResponse> chat(@Valid @RequestBody ApiDtos.ChatRequest request) {
+    ApiResponse<ChatResponse> chat(@Valid @RequestBody ChatRequest request) {
         return ApiResponse.ok(chatService.chat(request));
     }
 }
