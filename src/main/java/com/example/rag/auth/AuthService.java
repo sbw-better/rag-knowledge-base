@@ -8,9 +8,9 @@ import com.example.rag.auth.dto.UserResponse;
 import com.example.rag.domain.Role;
 import com.example.rag.domain.Tenant;
 import com.example.rag.domain.UserAccount;
-import com.example.rag.repository.RoleRepository;
-import com.example.rag.repository.TenantRepository;
-import com.example.rag.repository.UserRepository;
+import com.example.rag.mapper.RoleMapper;
+import com.example.rag.mapper.TenantMapper;
+import com.example.rag.mapper.UserMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -28,43 +28,49 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuthService {
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
-    public AuthService(TenantRepository tenantRepository, UserRepository userRepository, RoleRepository roleRepository, PasswordEncoder passwordEncoder, JwtService jwtService) {
-        this.tenantRepository = tenantRepository;
-        this.userRepository = userRepository;
-        this.roleRepository = roleRepository;
+    public AuthService(TenantMapper tenantMapper, UserMapper userMapper, RoleMapper roleMapper, PasswordEncoder passwordEncoder, JwtService jwtService) {
+        this.tenantMapper = tenantMapper;
+        this.userMapper = userMapper;
+        this.roleMapper = roleMapper;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
     }
 
     private static final String DEFAULT_TENANT = "Default";
 
-    private final TenantRepository tenantRepository;
-    private final UserRepository userRepository;
-    private final RoleRepository roleRepository;
+    private final TenantMapper tenantMapper;
+    private final UserMapper userMapper;
+    private final RoleMapper roleMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
         String normalizedEmail = request.email().trim().toLowerCase();
-        Tenant tenant = tenantRepository.findByName(DEFAULT_TENANT)
-                .orElseGet(() -> tenantRepository.save(new Tenant(DEFAULT_TENANT)));
-        userRepository.findByTenant_IdAndEmailIgnoreCase(tenant.getId(), normalizedEmail)
-                .ifPresent(existing -> {
-                    throw new BadRequestException("Email already registered");
-                });
+        Tenant tenant = tenantMapper.selectByName(DEFAULT_TENANT);
+        if (tenant == null) {
+            tenant = new Tenant(DEFAULT_TENANT);
+            tenantMapper.insert(tenant);
+        }
+        if (userMapper.selectByTenantIdAndEmailIgnoreCase(tenant.getId(), normalizedEmail) != null) {
+            throw new BadRequestException("Email already registered");
+        }
 
-        boolean firstUser = userRepository.count() == 0;
+        boolean firstUser = userMapper.selectCount(null) == 0;
         UserAccount user = new UserAccount();
-        user.setTenant(tenant);
+        user.setTenantId(tenant.getId());
         user.setEmail(normalizedEmail);
         user.setDisplayName(request.displayName().trim());
         user.setPasswordHash(passwordEncoder.encode(request.password()));
-        user.getRoles().add(requiredRole("USER"));
+        Role userRole = requiredRole("USER");
+        user.getRoles().add(userRole);
         if (firstUser) {
             user.getRoles().add(requiredRole("ADMIN"));
         }
-        userRepository.save(user);
+        userMapper.insert(user);
+        for (Role role : user.getRoles()) {
+            userMapper.insertUserRole(user.getId(), role.getId());
+        }
         log.info("User registered. userId={}, tenantId={}, email={}, firstUser={}",
                 user.getId(), tenant.getId(), user.getEmail(), firstUser);
         return new AuthResponse(jwtService.createToken(user), toUserResponse(user));
@@ -74,14 +80,17 @@ public class AuthService {
      * 校验邮箱和密码并签发 JWT。日志只记录用户 ID 和邮箱，不记录密码或 token。
      */
     public AuthResponse login(LoginRequest request) {
-        UserAccount user = userRepository.findByEmailIgnoreCase(request.email())
-                .orElseThrow(() -> new BadRequestException("Invalid email or password"));
+        UserAccount user = userMapper.selectByEmailIgnoreCase(request.email());
+        if (user == null) {
+            throw new BadRequestException("Invalid email or password");
+        }
+        attachRoles(user);
         if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             log.warn("User login failed. email={}", request.email());
             throw new BadRequestException("Invalid email or password");
         }
         log.info("User login succeeded. userId={}, tenantId={}, email={}",
-                user.getId(), user.getTenant().getId(), user.getEmail());
+                user.getId(), user.getTenantId(), user.getEmail());
         return new AuthResponse(jwtService.createToken(user), toUserResponse(user));
     }
 
@@ -90,12 +99,20 @@ public class AuthService {
     }
 
     private Role requiredRole(String name) {
-        return roleRepository.findByName(name).orElseThrow(() -> new IllegalStateException("Missing role " + name));
+        Role role = roleMapper.selectByName(name);
+        if (role == null) {
+            throw new IllegalStateException("Missing role " + name);
+        }
+        return role;
+    }
+
+    private void attachRoles(UserAccount user) {
+        user.setRoles(new java.util.HashSet<>(userMapper.selectRolesByUserId(user.getId())));
     }
 
     private static UserResponse toUserResponse(UserAccount user) {
         return new UserResponse(
-                user.getId(),
+                user.getId().toString(),
                 user.getEmail(),
                 user.getDisplayName(),
                 user.getRoles().stream().map(Role::getName).sorted().toList());

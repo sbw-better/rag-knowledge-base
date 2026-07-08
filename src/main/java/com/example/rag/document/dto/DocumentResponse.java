@@ -1,7 +1,6 @@
 package com.example.rag.document.dto;
 
 import java.time.Instant;
-import java.util.UUID;
 
 /**
  * 文档元数据响应。
@@ -10,8 +9,8 @@ import java.util.UUID;
  * 前端根据 status 展示上传后的入库进度。</p>
  */
 public record DocumentResponse(
-        UUID id,
-        UUID knowledgeBaseId,
+        String id,
+        String knowledgeBaseId,
         String fileName,
         String contentType,
         long sizeBytes,

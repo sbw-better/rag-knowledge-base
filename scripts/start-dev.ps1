@@ -11,7 +11,7 @@ Set-Location $projectRoot
 New-Item -ItemType Directory -Force -Path "logs" | Out-Null
 
 Write-Host "Starting infrastructure containers..."
-docker compose up -d postgres minio
+docker compose up -d mysql minio milvus
 if ($LASTEXITCODE -ne 0) {
     throw "docker compose up failed"
 }

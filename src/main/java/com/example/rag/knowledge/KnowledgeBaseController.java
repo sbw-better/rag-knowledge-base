@@ -20,7 +20,6 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
-import java.util.UUID;
 
 /**
  * 知识库管理接口入口。
@@ -65,7 +64,7 @@ public class KnowledgeBaseController {
      * 查询单个知识库详情，同时校验当前用户是否有访问权限。
      */
     @GetMapping("/{id}")
-    ApiResponse<KnowledgeBaseResponse> get(@PathVariable UUID id) {
+    ApiResponse<KnowledgeBaseResponse> get(@PathVariable Long id) {
         return ApiResponse.ok(knowledgeBaseService.get(id));
     }
 
@@ -73,7 +72,7 @@ public class KnowledgeBaseController {
      * 查询某个知识库下的文档及最近一次入库任务状态。
      */
     @GetMapping("/{id}/documents")
-    ApiResponse<List<DocumentItem>> listDocuments(@PathVariable UUID id) {
+    ApiResponse<List<DocumentItem>> listDocuments(@PathVariable Long id) {
         return ApiResponse.ok(documentService.listByKnowledgeBase(id));
     }
 
@@ -82,7 +81,7 @@ public class KnowledgeBaseController {
      */
     @PatchMapping("/{id}")
     ApiResponse<KnowledgeBaseResponse> update(
-            @PathVariable UUID id,
+            @PathVariable Long id,
             @Valid @RequestBody KnowledgeBaseRequest request) {
         return ApiResponse.ok(knowledgeBaseService.update(id, request));
     }
@@ -93,7 +92,7 @@ public class KnowledgeBaseController {
      * <p>当前版本不会物理删除数据库记录，避免误删后难以排查；前端删除后不可恢复。</p>
      */
     @DeleteMapping("/{id}")
-    ApiResponse<Void> delete(@PathVariable UUID id) {
+    ApiResponse<Void> delete(@PathVariable Long id) {
         knowledgeBaseService.delete(id);
         return ApiResponse.ok(null);
     }
@@ -106,7 +105,7 @@ public class KnowledgeBaseController {
      */
     @PostMapping(value = "/{id}/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     ApiResponse<UploadResponse> uploadDocument(
-            @PathVariable UUID id,
+            @PathVariable Long id,
             @RequestParam("file") MultipartFile file) {
         return ApiResponse.ok(documentService.upload(id, file));
     }

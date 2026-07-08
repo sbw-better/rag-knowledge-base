@@ -1,6 +1,6 @@
 # RAG Knowledge Base
 
-基于 Java 17、Spring Boot 3、PostgreSQL + pgvector、MinIO、React + Vite 的 RAG 知识库系统。当前版本覆盖认证、知识库管理、文档上传、异步入库、文档解析、文本切分、Embedding、向量检索、关键词检索、混合检索、RAG 问答、引用来源、会话记录、Swagger、Docker Compose 和前端工作台。
+基于 Java 17、Spring Boot 3、MySQL + MyBatis-Plus、Milvus、MinIO、React + Vite 的 RAG 知识库系统。当前版本覆盖认证、知识库管理、文档上传、异步入库、文档解析、文本切分、Embedding、向量检索、关键词检索、混合检索、RAG 问答、引用来源、会话记录、Swagger、Docker Compose 和前端工作台。
 
 ## 快速启动
 
@@ -35,6 +35,8 @@ npm run dev
 | Swagger | http://localhost:8080/swagger-ui.html |
 | Health | http://localhost:8080/actuator/health |
 | MinIO Console | http://localhost:9001 |
+| MySQL | localhost:3306 |
+| Milvus | http://localhost:19530 |
 
 开发环境 MinIO 默认账号为 `minioadmin / minioadmin`。系统账号需要通过注册接口或前端注册页创建，第一个注册用户会自动拥有 `ADMIN` 角色。
 
@@ -63,9 +65,11 @@ npm run dev
 
 - Java 17
 - Spring Boot 3.5.x
-- Spring Web / Security / Data JPA / Validation / Actuator
+- Spring Web / Security / Validation / Actuator
 - Flyway
-- PostgreSQL 16 + pgvector
+- MySQL 8.4
+- MyBatis-Plus
+- Milvus 2.6.x
 - MinIO
 - Apache Tika
 - OpenAI-compatible Chat / Embedding API
@@ -87,8 +91,8 @@ npm run dev
 - 知识库创建、查询、更新、删除。
 - 文档上传到 MinIO，并创建 DB 异步任务。
 - PDF、DOCX、TXT、Markdown、HTML 文本抽取。
-- 文本清洗、切分、Embedding、pgvector 入库。
-- 向量检索、关键词检索、混合检索。
+- 文本清洗、切分、Embedding、MySQL 切片入库和 Milvus 向量入库。
+- Milvus 向量检索、MySQL 关键词检索、RRF 混合检索。
 - RAG 问答、引用来源、会话和消息入库。
 - 前端工作台，支持知识库、文档任务、检索测试、问答和设置。
 
@@ -122,7 +126,7 @@ npm run typecheck
 npm run build
 
 # Docker 依赖服务
-docker compose up -d postgres minio
+docker compose up -d mysql minio milvus
 docker ps
 ```
 

@@ -7,7 +7,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.UUID;
 
 /**
  * 文档查询接口入口。
@@ -30,7 +29,7 @@ public class DocumentController {
      * <p>Service 会同时校验租户和知识库访问权限，避免用户通过猜测 documentId 越权查看文档。</p>
      */
     @GetMapping("/{id}")
-    ApiResponse<DocumentResponse> get(@PathVariable UUID id) {
+    ApiResponse<DocumentResponse> get(@PathVariable Long id) {
         return ApiResponse.ok(documentService.get(id));
     }
 }

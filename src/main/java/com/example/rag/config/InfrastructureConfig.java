@@ -1,6 +1,7 @@
 package com.example.rag.config;
 
 import com.example.rag.storage.StorageService;
+import com.example.rag.retrieval.MilvusVectorStore;
 import io.minio.MinioClient;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Bean;
@@ -63,5 +64,16 @@ public class InfrastructureConfig {
     @Bean
     ApplicationRunner ensureBucket(StorageService storageService) {
         return args -> storageService.ensureBucket();
+    }
+
+    /**
+     * 启动时初始化 Milvus collection。
+     *
+     * <p>Milvus 是可重建的检索索引，但 collection 结构必须在入库和检索前存在。
+     * 如果连接失败，应用会直接启动失败，避免用户上传文档后才发现向量库不可用。</p>
+     */
+    @Bean
+    ApplicationRunner ensureMilvusCollection(MilvusVectorStore milvusVectorStore) {
+        return args -> milvusVectorStore.ensureCollection();
     }
 }

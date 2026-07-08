@@ -36,7 +36,8 @@
 5. Worker 拉取任务，解析文件文本。
 6. 清洗和切分文本。
 7. 调用 Embedding。
-8. 写入 `document_chunks.embedding`。
+8. 写入 MySQL `document_chunks`。
+9. 将 embedding 写入 Milvus collection。
 9. 更新文档和任务状态。
 
 ## 检索模块
@@ -50,8 +51,8 @@
 
 当前支持：
 
-- `VECTOR`：基于问题 Embedding 和 pgvector 相似度。
-- `KEYWORD`：基于 PostgreSQL `to_tsvector` 的简化关键词检索。
+- `VECTOR`：基于问题 Embedding 和 Milvus 相似度检索。
+- `KEYWORD`：基于 MySQL FULLTEXT + LIKE 的简化关键词检索。
 - `HYBRID`：融合向量和关键词结果。
 
 ## 问答模块

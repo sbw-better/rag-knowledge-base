@@ -16,10 +16,9 @@ import com.example.rag.document.dto.DocumentResponse;
 import com.example.rag.document.dto.TaskResponse;
 import com.example.rag.document.dto.UploadResponse;
 import com.example.rag.knowledge.KnowledgeBaseService;
-import com.example.rag.repository.DocumentRepository;
-import com.example.rag.repository.RagTaskRepository;
+import com.example.rag.mapper.DocumentMapper;
+import com.example.rag.mapper.RagTaskMapper;
 import com.example.rag.storage.StorageService;
-import jakarta.persistence.EntityManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -28,7 +27,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
@@ -43,24 +41,22 @@ public class DocumentService {
     private static final Logger log = LoggerFactory.getLogger(DocumentService.class);
     private static final Pattern UNSAFE_FILE_CHARS = Pattern.compile("[\\\\/:*?\"<>|\\p{Cntrl}]+");
 
-    public DocumentService(KnowledgeBaseService knowledgeBaseService, DocumentRepository documentRepository, RagTaskRepository taskRepository, StorageService storageService, AppProperties properties, EntityManager entityManager) {
+    public DocumentService(KnowledgeBaseService knowledgeBaseService, DocumentMapper documentMapper, RagTaskMapper taskMapper, StorageService storageService, AppProperties properties) {
         this.knowledgeBaseService = knowledgeBaseService;
-        this.documentRepository = documentRepository;
-        this.taskRepository = taskRepository;
+        this.documentMapper = documentMapper;
+        this.taskMapper = taskMapper;
         this.storageService = storageService;
         this.properties = properties;
-        this.entityManager = entityManager;
     }
 
     private final KnowledgeBaseService knowledgeBaseService;
-    private final DocumentRepository documentRepository;
-    private final RagTaskRepository taskRepository;
+    private final DocumentMapper documentMapper;
+    private final RagTaskMapper taskMapper;
     private final StorageService storageService;
     private final AppProperties properties;
-    private final EntityManager entityManager;
 
     @Transactional
-    public UploadResponse upload(UUID knowledgeBaseId, MultipartFile file) {
+    public UploadResponse upload(Long knowledgeBaseId, MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("File is required");
         }
@@ -69,27 +65,29 @@ public class DocumentService {
         UserAccount user = CurrentUser.required();
         KnowledgeBase kb = knowledgeBaseService.requireAccess(knowledgeBaseId);
         log.info("Document upload requested. tenantId={}, userId={}, knowledgeBaseId={}, fileName={}, sizeBytes={}",
-                user.getTenant().getId(), user.getId(), knowledgeBaseId, safeFileName, file.getSize());
+                user.getTenantId(), user.getId(), knowledgeBaseId, safeFileName, file.getSize());
 
         DocumentEntity document = new DocumentEntity();
-        document.setId(UUID.randomUUID());
-        document.setTenant(user.getTenant());
-        document.setKnowledgeBase(kb);
-        document.setUploadedBy(user);
+        document.setTenantId(user.getTenantId());
+        document.setKnowledgeBaseId(kb.getId());
+        document.setUploadedBy(user.getId());
         document.setFileName(safeFileName);
         document.setContentType(file.getContentType());
         document.setSizeBytes(file.getSize());
         document.setStatus(DocumentStatus.UPLOADED);
-        document.setObjectKey(storageService.store(file, user.getTenant().getId(), document.getId(), safeFileName));
-        entityManager.persist(document);
+        document.setObjectKey("pending");
+        documentMapper.insert(document);
+        document.setObjectKey(storageService.store(file, user.getTenantId(), document.getId(), safeFileName));
+        documentMapper.updateById(document);
 
         RagTask task = new RagTask();
-        task.setTenant(user.getTenant());
+        task.setTenantId(user.getTenantId());
+        task.setDocumentId(document.getId());
         task.setDocument(document);
         task.setType(TaskType.INGEST_DOCUMENT);
         task.setStatus(TaskStatus.PENDING);
         task.setMaxAttempts(properties.ingestion().maxAttempts());
-        taskRepository.save(task);
+        taskMapper.insert(task);
         log.info("Document upload accepted. documentId={}, taskId={}, objectKey={}",
                 document.getId(), task.getId(), document.getObjectKey());
         return new UploadResponse(toResponse(document), toResponse(task));
@@ -98,41 +96,43 @@ public class DocumentService {
     /**
      * 查询单个文档详情。先按租户查文档，再复用知识库权限校验，避免越权查看。
      */
-    public DocumentResponse get(UUID id) {
+    public DocumentResponse get(Long id) {
         UserAccount user = CurrentUser.required();
-        DocumentEntity document = documentRepository.findByIdAndTenant_Id(id, user.getTenant().getId())
-                .orElseThrow(() -> new NotFoundException("Document not found"));
-        knowledgeBaseService.requireAccess(document.getKnowledgeBase().getId());
+        DocumentEntity document = documentMapper.selectByIdAndTenantId(id, user.getTenantId());
+        if (document == null) {
+            throw new NotFoundException("Document not found");
+        }
+        knowledgeBaseService.requireAccess(document.getKnowledgeBaseId());
         return toResponse(document);
     }
 
-    public List<DocumentItem> listByKnowledgeBase(UUID knowledgeBaseId) {
+    public List<DocumentItem> listByKnowledgeBase(Long knowledgeBaseId) {
         UserAccount user = CurrentUser.required();
         knowledgeBaseService.requireAccess(knowledgeBaseId);
-        List<DocumentItem> documents = documentRepository.findByKnowledgeBase_IdAndTenant_IdOrderByCreatedAtDesc(knowledgeBaseId, user.getTenant().getId())
+        List<DocumentItem> documents = documentMapper.selectByKnowledgeBaseIdAndTenantId(knowledgeBaseId, user.getTenantId())
                 .stream()
                 .map(document -> new DocumentItem(
                         toResponse(document),
-                        taskRepository.findFirstByDocument_IdOrderByCreatedAtDesc(document.getId())
-                                .map(this::toResponse)
-                                .orElse(null)))
+                        toResponseOrNull(taskMapper.selectLatestByDocumentId(document.getId()))))
                 .toList();
         log.debug("Listed documents. tenantId={}, userId={}, knowledgeBaseId={}, count={}",
-                user.getTenant().getId(), user.getId(), knowledgeBaseId, documents.size());
+                user.getTenantId(), user.getId(), knowledgeBaseId, documents.size());
         return documents;
     }
 
-    public TaskResponse getTask(UUID id) {
+    public TaskResponse getTask(Long id) {
         UserAccount user = CurrentUser.required();
-        return taskRepository.findByIdAndTenant_Id(id, user.getTenant().getId())
-                .map(this::toResponse)
-                .orElseThrow(() -> new NotFoundException("Task not found"));
+        RagTask task = taskMapper.selectByIdAndTenantId(id, user.getTenantId());
+        if (task == null) {
+            throw new NotFoundException("Task not found");
+        }
+        return toResponse(task);
     }
 
     public DocumentResponse toResponse(DocumentEntity document) {
         return new DocumentResponse(
-                document.getId(),
-                document.getKnowledgeBase().getId(),
+                document.getId().toString(),
+                document.getKnowledgeBaseId().toString(),
                 document.getFileName(),
                 document.getContentType(),
                 document.getSizeBytes(),
@@ -143,14 +143,18 @@ public class DocumentService {
 
     public TaskResponse toResponse(RagTask task) {
         return new TaskResponse(
-                task.getId(),
-                task.getDocument().getId(),
+                task.getId().toString(),
+                task.getDocumentId().toString(),
                 task.getType().name(),
                 task.getStatus().name(),
                 task.getAttempts(),
                 task.getErrorMessage(),
                 task.getCreatedAt(),
                 task.getFinishedAt());
+    }
+
+    private TaskResponse toResponseOrNull(RagTask task) {
+        return task == null ? null : toResponse(task);
     }
 
     private void validateFile(String fileName) {

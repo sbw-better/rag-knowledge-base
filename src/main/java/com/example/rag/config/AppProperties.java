@@ -17,6 +17,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record AppProperties(
         Security security,
         Storage storage,
+        Milvus milvus,
         Model model,
         Ingestion ingestion,
         Retrieval retrieval
@@ -31,6 +32,12 @@ public record AppProperties(
      * 对象存储配置。当前实现使用 MinIO，后续替换 S3、OSS、COS 时可以保持业务层不变。
      */
     public record Storage(String endpoint, String accessKey, String secretKey, String bucket) {
+    }
+
+    /**
+     * Milvus 向量数据库配置。Milvus 保存可重建的检索索引，MySQL 仍是业务事实库。
+     */
+    public record Milvus(String endpoint, String database, String collection, boolean enabled) {
     }
 
     /**

@@ -1,19 +1,10 @@
 package com.example.rag.domain;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.Table;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 
 import java.time.Instant;
-import java.util.UUID;
 
 /**
  * 知识库成员授权实体。
@@ -21,56 +12,41 @@ import java.util.UUID;
  * <p>当前前端还没有成员管理页面，但后端已经预留该表。知识库访问判断会同时考虑 owner、
  * ADMIN 角色和成员表记录。后续要实现“把某个知识库授权给某个普通用户”，就会写入这里。</p>
  */
-@Entity
-@Table(name = "knowledge_base_members")
+@TableName("knowledge_base_members")
 public class KnowledgeBaseMember {
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
-
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "knowledge_base_id")
-    private KnowledgeBase knowledgeBase;
-
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "user_id")
-    private UserAccount user;
+    @TableId(type = IdType.ASSIGN_ID)
+    private Long id;
+    private Long knowledgeBaseId;
+    private Long userId;
 
     /**
      * 用户在该知识库下的权限级别，例如只读、编辑、管理。
      */
-    @Enumerated(EnumType.STRING)
     private KbPermission permission;
     private Instant createdAt;
 
-    @PrePersist
-    void prePersist() {
-        createdAt = Instant.now();
-    }
-    // Generated accessors
-
-    public UUID getId() {
+    public Long getId() {
         return id;
     }
 
-    public void setId(UUID id) {
+    public void setId(Long id) {
         this.id = id;
     }
 
-    public KnowledgeBase getKnowledgeBase() {
-        return knowledgeBase;
+    public Long getKnowledgeBaseId() {
+        return knowledgeBaseId;
     }
 
-    public void setKnowledgeBase(KnowledgeBase knowledgeBase) {
-        this.knowledgeBase = knowledgeBase;
+    public void setKnowledgeBaseId(Long knowledgeBaseId) {
+        this.knowledgeBaseId = knowledgeBaseId;
     }
 
-    public UserAccount getUser() {
-        return user;
+    public Long getUserId() {
+        return userId;
     }
 
-    public void setUser(UserAccount user) {
-        this.user = user;
+    public void setUserId(Long userId) {
+        this.userId = userId;
     }
 
     public KbPermission getPermission() {
@@ -88,5 +64,4 @@ public class KnowledgeBaseMember {
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
     }
-
 }

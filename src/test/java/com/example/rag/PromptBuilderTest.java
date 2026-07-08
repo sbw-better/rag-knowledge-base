@@ -6,14 +6,13 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class PromptBuilderTest {
     @Test
     void buildsGroundedPromptWithSources() {
-        SearchCandidate hit = new SearchCandidate(UUID.randomUUID(), UUID.randomUUID(), "manual.txt",
+        SearchCandidate hit = new SearchCandidate(1001L, 2001L, "manual.txt",
                 2, "系统支持上传文档。", 0.8, "VECTOR");
 
         List<Map<String, String>> messages = new PromptBuilder().build("支持什么？", List.of(hit));

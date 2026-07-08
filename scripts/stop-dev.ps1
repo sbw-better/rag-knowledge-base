@@ -13,4 +13,4 @@ foreach ($line in $listeners) {
 }
 
 Write-Host "Stopping infrastructure containers..."
-docker compose stop postgres minio
+docker compose stop mysql minio milvus milvus-etcd milvus-minio

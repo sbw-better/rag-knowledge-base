@@ -4,7 +4,7 @@
 
 推荐方式：
 
-1. Docker 启动 PostgreSQL 和 MinIO。
+1. Docker 启动 MySQL、Milvus 和 MinIO。
 2. 本机 JDK 17 启动 Spring Boot。
 3. Vite 启动前端。
 
@@ -25,20 +25,22 @@ npm run dev
 
 `docker-compose.yml` 包含：
 
-- `postgres`：`pgvector/pgvector:pg16`
-- `minio`：MinIO 对象存储
-- `app`：Spring Boot 后端镜像
+- `mysql`：MySQL 8.4 业务数据库。
+- `minio`：业务对象存储，用于保存上传原始文件。
+- `milvus`：Milvus standalone 向量数据库。
+- `milvus-etcd`、`milvus-minio`：Milvus standalone 依赖服务。
+- `app`：Spring Boot 后端镜像。
 
-启动：
+启动全部服务：
 
 ```powershell
 docker compose up --build
 ```
 
-仅启动依赖：
+仅启动本地开发依赖：
 
 ```powershell
-docker compose up -d postgres minio
+docker compose up -d mysql minio milvus
 ```
 
 ## 端口
@@ -47,7 +49,8 @@ docker compose up -d postgres minio
 | --- | --- |
 | 后端 | 8080 |
 | 前端 Vite | 5173 |
-| PostgreSQL | 5432 |
+| MySQL | 3306 |
+| Milvus REST/gRPC | 19530 |
 | MinIO API | 9000 |
 | MinIO Console | 9001 |
 
@@ -58,12 +61,15 @@ docker compose up -d postgres minio
 ```text
 SPRING_PROFILES_ACTIVE=prod
 JWT_SECRET=replace-with-a-long-random-secret
-DB_URL=jdbc:postgresql://host:5432/ragkb
+DB_URL=jdbc:mysql://mysql-host:3306/ragkb?useUnicode=true&characterEncoding=utf8&useSSL=true&serverTimezone=UTC
 DB_USERNAME=replace-with-db-user
 DB_PASSWORD=replace-with-db-password
 MINIO_ENDPOINT=https://object-storage.example.com
 MINIO_ACCESS_KEY=replace-with-access-key
 MINIO_SECRET_KEY=replace-with-secret-key
+MILVUS_ENDPOINT=http://milvus-host:19530
+MILVUS_DATABASE=default
+MILVUS_COLLECTION=rag_document_chunks
 OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 OPENAI_API_KEY=replace-with-model-key
 ```

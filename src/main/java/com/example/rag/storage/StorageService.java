@@ -13,7 +13,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
-import java.util.UUID;
 
 /**
  * MinIO 对象存储服务。
@@ -46,7 +45,7 @@ public class StorageService {
     /**
      * 保存上传文件并返回 objectKey。objectKey 按 tenant/document 分层，便于排查和后续归档。
      */
-    public String store(MultipartFile file, UUID tenantId, UUID documentId, String safeFileName) {
+    public String store(MultipartFile file, Long tenantId, Long documentId, String safeFileName) {
         String objectKey = tenantId + "/" + documentId + "/" + safeFileName;
         try (InputStream inputStream = file.getInputStream()) {
             minioClient.putObject(PutObjectArgs.builder()

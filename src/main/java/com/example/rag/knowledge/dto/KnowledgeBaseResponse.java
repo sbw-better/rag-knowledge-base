@@ -1,7 +1,6 @@
 package com.example.rag.knowledge.dto;
 
 import java.time.Instant;
-import java.util.UUID;
 
 /**
  * 知识库详情响应。
@@ -10,7 +9,7 @@ import java.util.UUID;
  * 普通问答用户的页面可以只展示业务名称和描述，不展示 chunk/topK 等维护参数。</p>
  */
 public record KnowledgeBaseResponse(
-        UUID id,
+        String id,
         String name,
         String description,
         int chunkSize,

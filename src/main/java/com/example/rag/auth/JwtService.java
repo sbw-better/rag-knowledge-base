@@ -14,7 +14,6 @@ import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.Date;
 import java.util.List;
-import java.util.UUID;
 
 @Component
 public class JwtService {
@@ -30,7 +29,7 @@ public class JwtService {
         List<String> roles = user.getRoles().stream().map(Role::getName).toList();
         return Jwts.builder()
                 .subject(user.getId().toString())
-                .claim("tenantId", user.getTenant().getId().toString())
+                .claim("tenantId", user.getTenantId().toString())
                 .claim("email", user.getEmail())
                 .claim("roles", roles)
                 .issuedAt(Date.from(now))
@@ -39,9 +38,9 @@ public class JwtService {
                 .compact();
     }
 
-    public UUID parseUserId(String token) {
+    public Long parseUserId(String token) {
         Claims claims = Jwts.parser().verifyWith(key()).build().parseSignedClaims(token).getPayload();
-        return UUID.fromString(claims.getSubject());
+        return Long.valueOf(claims.getSubject());
     }
 
     private SecretKey key() {

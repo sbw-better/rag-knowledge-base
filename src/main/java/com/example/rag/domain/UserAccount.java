@@ -1,22 +1,13 @@
 package com.example.rag.domain;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.JoinTable;
-import jakarta.persistence.ManyToMany;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import jakarta.persistence.Table;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.UUID;
 
 /**
  * 用户账号实体。
@@ -24,17 +15,11 @@ import java.util.UUID;
  * <p>该实体既用于登录认证，也会作为 Spring Security Authentication 的 principal 放入
  * SecurityContext。业务层通过 CurrentUser 取到的当前用户就是这个对象。</p>
  */
-@Entity
-@Table(name = "users")
+@TableName("users")
 public class UserAccount {
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
-
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "tenant_id")
-    private Tenant tenant;
-
+    @TableId(type = IdType.ASSIGN_ID)
+    private Long id;
+    private Long tenantId;
     private String email;
     private String displayName;
 
@@ -53,38 +38,23 @@ public class UserAccount {
     /**
      * 系统级角色，例如 ADMIN、USER。知识库级权限由 KnowledgeBaseMember 单独表达。
      */
-    @ManyToMany(fetch = FetchType.EAGER)
-    @JoinTable(name = "user_roles",
-            joinColumns = @JoinColumn(name = "user_id"),
-            inverseJoinColumns = @JoinColumn(name = "role_id"))
+    @TableField(exist = false)
     private Set<Role> roles = new HashSet<>();
 
-    @PrePersist
-    void prePersist() {
-        createdAt = Instant.now();
-        updatedAt = createdAt;
-    }
-
-    @PreUpdate
-    void preUpdate() {
-        updatedAt = Instant.now();
-    }
-    // Generated accessors
-
-    public UUID getId() {
+    public Long getId() {
         return id;
     }
 
-    public void setId(UUID id) {
+    public void setId(Long id) {
         this.id = id;
     }
 
-    public Tenant getTenant() {
-        return tenant;
+    public Long getTenantId() {
+        return tenantId;
     }
 
-    public void setTenant(Tenant tenant) {
-        this.tenant = tenant;
+    public void setTenantId(Long tenantId) {
+        this.tenantId = tenantId;
     }
 
     public String getEmail() {
@@ -142,5 +112,4 @@ public class UserAccount {
     public void setRoles(Set<Role> roles) {
         this.roles = roles;
     }
-
 }

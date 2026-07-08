@@ -1,13 +1,10 @@
 package com.example.rag.domain;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 
 import java.time.Instant;
-import java.util.UUID;
 
 /**
  * 系统角色实体。
@@ -15,21 +12,18 @@ import java.util.UUID;
  * <p>当前内置 ADMIN 和 USER。角色用于系统级权限判断，例如 ADMIN 可以管理租户内知识库；
  * 知识库内的成员权限由 {@link KnowledgeBaseMember} 表达。</p>
  */
-@Entity
-@Table(name = "roles")
+@TableName("roles")
 public class Role {
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    @TableId(type = IdType.ASSIGN_ID)
+    private Long id;
     private String name;
     private Instant createdAt;
-    // Generated accessors
 
-    public UUID getId() {
+    public Long getId() {
         return id;
     }
 
-    public void setId(UUID id) {
+    public void setId(Long id) {
         this.id = id;
     }
 
@@ -48,5 +42,4 @@ public class Role {
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
     }
-
 }

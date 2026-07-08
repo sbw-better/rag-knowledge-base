@@ -5,17 +5,9 @@ spring:
   application:
     name: rag-knowledge-base
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/ragkb}
+    url: ${DB_URL:jdbc:mysql://localhost:3306/ragkb?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
     username: ${DB_USERNAME:rag}
     password: ${DB_PASSWORD:rag}
-  jpa:
-    hibernate:
-      ddl-auto: validate
-    open-in-view: false
-    properties:
-      hibernate:
-        jdbc:
-          time_zone: UTC
   flyway:
     enabled: true
   servlet:
@@ -42,6 +34,11 @@ app:
     access-key: ${MINIO_ACCESS_KEY:minioadmin}
     secret-key: ${MINIO_SECRET_KEY:minioadmin}
     bucket: ${MINIO_BUCKET:rag-documents}
+  milvus:
+    endpoint: ${MILVUS_ENDPOINT:http://localhost:19530}
+    database: ${MILVUS_DATABASE:default}
+    collection: ${MILVUS_COLLECTION:rag_document_chunks}
+    enabled: ${MILVUS_ENABLED:true}
   model:
     base-url: ${OPENAI_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
     api-key: ${OPENAI_API_KEY:}
@@ -60,3 +57,9 @@ app:
 logging:
   level:
     com.example.rag: INFO
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false

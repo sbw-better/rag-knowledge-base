@@ -7,7 +7,6 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * 检索结果融合服务。
@@ -30,7 +29,7 @@ public class RetrievalFusionService {
      * 也是 RAG 系统里常见的第一版混合检索方案。</p>
      */
     public List<SearchCandidate> fuse(List<SearchCandidate> vectorHits, List<SearchCandidate> keywordHits, int topK) {
-        Map<UUID, MutableHit> merged = new LinkedHashMap<>();
+        Map<Long, MutableHit> merged = new LinkedHashMap<>();
         add(merged, vectorHits, properties.retrieval().vectorWeight(), "VECTOR");
         add(merged, keywordHits, properties.retrieval().keywordWeight(), "KEYWORD");
         return merged.values().stream()
@@ -43,7 +42,7 @@ public class RetrievalFusionService {
     /**
      * 将单个检索通道结果合并到候选池。相同 chunk 被多路召回时标记为 HYBRID。
      */
-    private static void add(Map<UUID, MutableHit> merged, List<SearchCandidate> hits, double weight, String source) {
+    private static void add(Map<Long, MutableHit> merged, List<SearchCandidate> hits, double weight, String source) {
         for (int i = 0; i < hits.size(); i++) {
             SearchCandidate hit = hits.get(i);
             MutableHit mutable = merged.computeIfAbsent(hit.chunkId(), key -> new MutableHit(hit));

@@ -70,7 +70,7 @@ public class SecurityConfig {
     private void configureAuthorization(
             AuthorizeHttpRequestsConfigurer<HttpSecurity>.AuthorizationManagerRequestMatcherRegistry auth,
             boolean prod) {
-        auth.requestMatchers("/api/auth/**", "/actuator/health").permitAll();
+        auth.requestMatchers("/api/auth/register", "/api/auth/login", "/actuator/health").permitAll();
         if (!prod) {
             auth.requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/actuator/info").permitAll();
         }

@@ -1,18 +1,10 @@
 package com.example.rag.domain;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import jakarta.persistence.Table;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 
 import java.time.Instant;
-import java.util.UUID;
 
 /**
  * 问答会话实体。
@@ -20,24 +12,13 @@ import java.util.UUID;
  * <p>一个会话属于一个用户和一个知识库，用于保存连续问答历史。当前 MVP 的 Chat 接口
  * 会在没有 conversationId 时自动创建会话，有 conversationId 时把消息追加到已有会话。</p>
  */
-@Entity
-@Table(name = "conversations")
+@TableName("conversations")
 public class Conversation {
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
-
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "tenant_id")
-    private Tenant tenant;
-
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "user_id")
-    private UserAccount user;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "knowledge_base_id")
-    private KnowledgeBase knowledgeBase;
+    @TableId(type = IdType.ASSIGN_ID)
+    private Long id;
+    private Long tenantId;
+    private Long userId;
+    private Long knowledgeBaseId;
 
     /**
      * 会话标题，当前默认取首个问题的前 80 个字符。
@@ -46,48 +27,36 @@ public class Conversation {
     private Instant createdAt;
     private Instant updatedAt;
 
-    @PrePersist
-    void prePersist() {
-        createdAt = Instant.now();
-        updatedAt = createdAt;
-    }
-
-    @PreUpdate
-    void preUpdate() {
-        updatedAt = Instant.now();
-    }
-    // Generated accessors
-
-    public UUID getId() {
+    public Long getId() {
         return id;
     }
 
-    public void setId(UUID id) {
+    public void setId(Long id) {
         this.id = id;
     }
 
-    public Tenant getTenant() {
-        return tenant;
+    public Long getTenantId() {
+        return tenantId;
     }
 
-    public void setTenant(Tenant tenant) {
-        this.tenant = tenant;
+    public void setTenantId(Long tenantId) {
+        this.tenantId = tenantId;
     }
 
-    public UserAccount getUser() {
-        return user;
+    public Long getUserId() {
+        return userId;
     }
 
-    public void setUser(UserAccount user) {
-        this.user = user;
+    public void setUserId(Long userId) {
+        this.userId = userId;
     }
 
-    public KnowledgeBase getKnowledgeBase() {
-        return knowledgeBase;
+    public Long getKnowledgeBaseId() {
+        return knowledgeBaseId;
     }
 
-    public void setKnowledgeBase(KnowledgeBase knowledgeBase) {
-        this.knowledgeBase = knowledgeBase;
+    public void setKnowledgeBaseId(Long knowledgeBaseId) {
+        this.knowledgeBaseId = knowledgeBaseId;
     }
 
     public String getTitle() {
@@ -113,5 +82,4 @@ public class Conversation {
     public void setUpdatedAt(Instant updatedAt) {
         this.updatedAt = updatedAt;
     }
-
 }

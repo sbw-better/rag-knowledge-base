@@ -1,7 +1,6 @@
 package com.example.rag.document.dto;
 
 import java.time.Instant;
-import java.util.UUID;
 
 /**
  * 文档入库任务响应。
@@ -10,8 +9,8 @@ import java.util.UUID;
  * errorMessage 用于展示失败原因，finishedAt 只有任务结束后才有值。</p>
  */
 public record TaskResponse(
-        UUID id,
-        UUID documentId,
+        String id,
+        String documentId,
         String type,
         String status,
         int attempts,

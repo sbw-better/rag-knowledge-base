@@ -22,8 +22,11 @@ docker ps
 
 常见容器：
 
-- `ragkb-postgres`
+- `ragkb-mysql`
 - `ragkb-minio`
+- `ragkb-milvus`
+- `ragkb-milvus-etcd`
+- `ragkb-milvus-minio`
 - `ragkb-app`
 
 ## 查看后端日志
@@ -40,10 +43,10 @@ docker logs ragkb-app
 
 ## 查看数据库
 
-进入 PostgreSQL：
+进入 MySQL：
 
 ```powershell
-docker exec -it ragkb-postgres psql -U rag -d ragkb
+docker exec -it ragkb-mysql mysql -urag -prag ragkb
 ```
 
 常用 SQL：
@@ -74,6 +77,22 @@ minioadmin / minioadmin
 
 - `rag-documents`
 
+## 查看 Milvus
+
+Milvus standalone 默认端口：
+
+```text
+http://localhost:19530
+```
+
+当前项目通过后端启动时的 `MilvusVectorStore.ensureCollection()` 自动检查和创建 collection。
+
+如果向量检索异常，优先查看：
+
+- 后端启动日志中 Milvus collection 初始化是否失败。
+- `MILVUS_ENDPOINT` 是否指向正确地址。
+- Embedding 维度和 collection 维度是否一致。
+
 ## 常见问题
 
 ### 前端提示无法连接后端
@@ -100,16 +119,18 @@ minioadmin / minioadmin
 - 文件格式解析失败。
 - 模型 API Key 无效。
 - 模型服务网络超时。
-- Embedding 维度和数据库 `vector(1536)` 不一致。
+- Milvus 不可用。
+- Embedding 维度和 Milvus collection 维度不一致。
 
 ### 向量检索没有结果，关键词有结果
 
 可能原因：
 
-- 文档切片没有成功写入 embedding。
+- 文档切片写入 MySQL 成功，但 Milvus 写入失败。
 - 模型服务调用失败，任务未真正完成。
 - 查询和文档语义差距大。
 - 使用了不同维度或不同模型生成问题向量和文档向量。
+- `MILVUS_ENABLED=false`。
 
 ### Swagger 没有 Authorize
 

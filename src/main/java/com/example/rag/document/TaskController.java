@@ -7,7 +7,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.UUID;
 
 /**
  * 异步任务查询接口。
@@ -30,7 +29,7 @@ public class TaskController {
      * <p>任务查询同样按当前用户租户隔离，不能跨租户查看任务状态。</p>
      */
     @GetMapping("/{id}")
-    ApiResponse<TaskResponse> get(@PathVariable UUID id) {
+    ApiResponse<TaskResponse> get(@PathVariable Long id) {
         return ApiResponse.ok(documentService.getTask(id));
     }
 }

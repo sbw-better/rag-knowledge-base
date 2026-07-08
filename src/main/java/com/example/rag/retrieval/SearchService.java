@@ -1,5 +1,6 @@
 package com.example.rag.retrieval;
 
+import com.example.rag.common.Ids;
 import com.example.rag.domain.KnowledgeBase;
 import com.example.rag.knowledge.KnowledgeBaseService;
 import com.example.rag.model.EmbeddingClient;
@@ -12,7 +13,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.UUID;
 
 /**
  * 检索应用服务。
@@ -25,25 +25,28 @@ import java.util.UUID;
 public class SearchService {
     private static final Logger log = LoggerFactory.getLogger(SearchService.class);
 
-    public SearchService(KnowledgeBaseService knowledgeBaseService, EmbeddingClient embeddingClient, VectorIndexService vectorIndexService, RetrievalFusionService fusionService) {
+    private final KnowledgeBaseService knowledgeBaseService;
+    private final EmbeddingClient embeddingClient;
+    private final VectorIndexService vectorIndexService;
+    private final RetrievalFusionService fusionService;
+
+    public SearchService(KnowledgeBaseService knowledgeBaseService,
+                         EmbeddingClient embeddingClient,
+                         VectorIndexService vectorIndexService,
+                         RetrievalFusionService fusionService) {
         this.knowledgeBaseService = knowledgeBaseService;
         this.embeddingClient = embeddingClient;
         this.vectorIndexService = vectorIndexService;
         this.fusionService = fusionService;
     }
 
-    private final KnowledgeBaseService knowledgeBaseService;
-    private final EmbeddingClient embeddingClient;
-    private final VectorIndexService vectorIndexService;
-    private final RetrievalFusionService fusionService;
-
     public SearchResponse search(SearchRequest request) {
-        KnowledgeBase kb = knowledgeBaseService.requireAccess(request.knowledgeBaseId());
+        KnowledgeBase kb = knowledgeBaseService.requireAccess(Ids.parse(request.knowledgeBaseId(), "knowledgeBaseId"));
         int topK = request.topK() == null ? kb.getTopK() : request.topK();
         long startedAt = System.nanoTime();
         List<SearchCandidate> hits = searchInternal(kb, request.query(), request.mode(), topK);
         log.info("Search completed. tenantId={}, knowledgeBaseId={}, mode={}, topK={}, hits={}, costMs={}",
-                kb.getTenant().getId(), kb.getId(), request.mode(), topK, hits.size(), elapsedMs(startedAt));
+                kb.getTenantId(), kb.getId(), request.mode(), topK, hits.size(), elapsedMs(startedAt));
         return new SearchResponse(hits.stream().map(SearchService::toHit).toList());
     }
 
@@ -54,8 +57,8 @@ public class SearchService {
      */
     public List<SearchCandidate> searchInternal(KnowledgeBase kb, String query, SearchMode mode, int topK) {
         SearchMode safeMode = mode == null ? SearchMode.HYBRID : mode;
-        UUID tenantId = kb.getTenant().getId();
-        UUID kbId = kb.getId();
+        Long tenantId = kb.getTenantId();
+        Long kbId = kb.getId();
         if (safeMode == SearchMode.VECTOR) {
             return vectorIndexService.vectorSearch(tenantId, kbId, embeddingClient.embed(query), topK);
         }
@@ -72,7 +75,13 @@ public class SearchService {
     }
 
     private static SearchHit toHit(SearchCandidate hit) {
-        return new SearchHit(hit.chunkId(), hit.documentId(), hit.fileName(), hit.chunkIndex(),
-                hit.content(), hit.score(), hit.source());
+        return new SearchHit(
+                hit.chunkId().toString(),
+                hit.documentId().toString(),
+                hit.fileName(),
+                hit.chunkIndex(),
+                hit.content(),
+                hit.score(),
+                hit.source());
     }
 }

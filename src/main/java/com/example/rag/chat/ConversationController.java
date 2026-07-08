@@ -7,7 +7,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.UUID;
 
 /**
  * 会话历史查询接口。
@@ -28,7 +27,7 @@ public class ConversationController {
      * 查询指定会话详情。
      */
     @GetMapping("/{id}")
-    ApiResponse<ConversationResponse> get(@PathVariable UUID id) {
+    ApiResponse<ConversationResponse> get(@PathVariable Long id) {
         return ApiResponse.ok(chatService.getConversation(id));
     }
 }

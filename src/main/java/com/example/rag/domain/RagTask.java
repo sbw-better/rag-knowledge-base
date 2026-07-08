@@ -1,21 +1,11 @@
 package com.example.rag.domain;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import jakarta.persistence.Table;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 
 import java.time.Instant;
-import java.util.UUID;
 
 /**
  * RAG 异步任务实体。
@@ -24,25 +14,13 @@ import java.util.UUID;
  * 上传文档时创建 PENDING 任务，{@code IngestionWorker} 定时扫描并执行文档解析、切分、
  * Embedding 和向量入库。</p>
  */
-@Entity
-@Table(name = "rag_tasks")
+@TableName("rag_tasks")
 public class RagTask {
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
-
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "tenant_id")
-    private Tenant tenant;
-
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "document_id")
-    private DocumentEntity document;
-
-    @Enumerated(EnumType.STRING)
+    @TableId(type = IdType.ASSIGN_ID)
+    private Long id;
+    private Long tenantId;
+    private Long documentId;
     private TaskType type;
-
-    @Enumerated(EnumType.STRING)
     private TaskStatus status;
 
     /**
@@ -54,7 +32,6 @@ public class RagTask {
     /**
      * 任务失败时的错误摘要，前端任务列表会展示该信息。
      */
-    @Column(columnDefinition = "text")
     private String errorMessage;
 
     /**
@@ -66,40 +43,31 @@ public class RagTask {
     private Instant createdAt;
     private Instant updatedAt;
 
-    @PrePersist
-    void prePersist() {
-        createdAt = Instant.now();
-        updatedAt = createdAt;
-    }
+    @TableField(exist = false)
+    private DocumentEntity document;
 
-    @PreUpdate
-    void preUpdate() {
-        updatedAt = Instant.now();
-    }
-    // Generated accessors
-
-    public UUID getId() {
+    public Long getId() {
         return id;
     }
 
-    public void setId(UUID id) {
+    public void setId(Long id) {
         this.id = id;
     }
 
-    public Tenant getTenant() {
-        return tenant;
+    public Long getTenantId() {
+        return tenantId;
     }
 
-    public void setTenant(Tenant tenant) {
-        this.tenant = tenant;
+    public void setTenantId(Long tenantId) {
+        this.tenantId = tenantId;
     }
 
-    public DocumentEntity getDocument() {
-        return document;
+    public Long getDocumentId() {
+        return documentId;
     }
 
-    public void setDocument(DocumentEntity document) {
-        this.document = document;
+    public void setDocumentId(Long documentId) {
+        this.documentId = documentId;
     }
 
     public TaskType getType() {
@@ -182,4 +150,11 @@ public class RagTask {
         this.updatedAt = updatedAt;
     }
 
+    public DocumentEntity getDocument() {
+        return document;
+    }
+
+    public void setDocument(DocumentEntity document) {
+        this.document = document;
+    }
 }

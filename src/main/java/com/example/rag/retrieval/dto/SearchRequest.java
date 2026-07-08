@@ -5,8 +5,6 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
-import java.util.UUID;
-
 /**
  * 检索请求。
  *
@@ -14,7 +12,7 @@ import java.util.UUID;
  * topK 是一次请求的临时覆盖值，不传时使用知识库默认 topK。</p>
  */
 public record SearchRequest(
-        @NotNull UUID knowledgeBaseId,
+        @NotNull String knowledgeBaseId,
         @NotBlank String query,
         SearchMode mode,
         @Min(1) @Max(50) Integer topK

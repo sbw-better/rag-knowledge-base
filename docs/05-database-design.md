@@ -2,14 +2,39 @@
 
 ## 数据库选型
 
-当前版本使用 PostgreSQL 16 + pgvector。业务数据、任务数据、会话数据和向量数据都存储在同一个数据库中，便于 MVP 快速运行和调试。
+当前版本使用 MySQL 8.4 作为业务数据库，使用 MyBatis-Plus 访问数据，主键统一采用 `BIGINT` 雪花 ID。
 
-启用扩展：
+MySQL 保存系统事实数据：
 
-```sql
-CREATE EXTENSION IF NOT EXISTS vector;
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-```
+- 用户、角色、租户。
+- 知识库、成员权限。
+- 文档元数据、入库任务。
+- 文档切片文本和元数据。
+- 会话、消息、引用来源。
+
+Milvus 保存向量索引：
+
+- `chunk_id`
+- `tenant_id`
+- `knowledge_base_id`
+- `document_id`
+- `file_name`
+- `chunk_index`
+- `content`
+- `metadata_json`
+- `dense_vector`
+
+MySQL 是主事实库，Milvus 是可重建索引。Milvus 数据丢失时，可以从 `document_chunks` 和模型 Embedding 重新构建。
+
+## 主键策略
+
+所有业务主表使用 `BIGINT` 主键，代码中由 MyBatis-Plus `IdType.ASSIGN_ID` 生成雪花 ID。
+
+注意：
+
+- 后端 Java 使用 `Long`。
+- API 响应中 ID 序列化为字符串。
+- 前端 TypeScript 统一用 `string` 接收 ID，避免 JavaScript 大整数精度丢失。
 
 ## 核心表
 
@@ -23,7 +48,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 | `knowledge_base_members` | 知识库成员权限预留 |
 | `documents` | 上传文档元数据 |
 | `rag_tasks` | 异步任务 |
-| `document_chunks` | 文档切片和向量 |
+| `document_chunks` | 文档切片文本和元数据 |
 | `conversations` | 会话 |
 | `messages` | 消息 |
 | `message_citations` | 消息引用来源 |
@@ -46,7 +71,7 @@ erDiagram
 
 ## document_chunks
 
-`document_chunks` 是 RAG 检索的核心表：
+`document_chunks` 是 RAG 检索的事实表：
 
 | 字段 | 说明 |
 | --- | --- |
@@ -56,16 +81,14 @@ erDiagram
 | `chunk_index` | 文档内切片序号 |
 | `content` | 切片文本 |
 | `metadata_json` | 元数据 JSON 字符串 |
-| `embedding vector(1536)` | 向量 |
 
-索引：
+关键词检索第一版使用 MySQL FULLTEXT + LIKE 兜底：
 
 ```sql
-CREATE INDEX idx_chunks_kb ON document_chunks(knowledge_base_id);
-CREATE INDEX idx_chunks_doc ON document_chunks(document_id);
-CREATE INDEX idx_chunks_content_trgm ON document_chunks USING gin (to_tsvector('simple', content));
-CREATE INDEX idx_chunks_embedding ON document_chunks USING hnsw (embedding vector_cosine_ops);
+FULLTEXT KEY ft_chunks_content (content) WITH PARSER ngram
 ```
+
+向量不再保存到 MySQL 字段，而是写入 Milvus collection。这样 MySQL 负责事务和业务查询，Milvus 负责向量召回。
 
 ## 任务状态
 
@@ -87,9 +110,11 @@ CREATE INDEX idx_chunks_embedding ON document_chunks USING hnsw (embedding vecto
 - `documents.knowledge_base_id`
 - `document_chunks.knowledge_base_id`
 - `conversations.knowledge_base_id`
+- Milvus filter 中的 `tenant_id` 和 `knowledge_base_id`
 
-## 后续演进
+## 重建索引原则
 
-- 若迁移到 MySQL + MyBatis-Plus，需要保留业务表结构语义，但向量字段迁移到独立向量数据库。
-- 若引入 Milvus，`document_chunks` 可保留文本和元数据，向量写入 Milvus collection。
-- 若引入 OpenSearch，可承载关键词检索、全文检索和 BM25。
+- MySQL `document_chunks` 是重建 Milvus 的数据来源。
+- 如果 Embedding 模型或维度变化，必须重建 Milvus collection。
+- 删除文档时应同时删除 MySQL chunk 和 Milvus entity。
+- 入库失败时以 `rag_tasks.error_message` 为准排查。

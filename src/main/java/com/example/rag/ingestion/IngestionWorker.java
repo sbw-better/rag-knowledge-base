@@ -4,19 +4,20 @@ import com.example.rag.common.BadRequestException;
 import com.example.rag.config.AppProperties;
 import com.example.rag.domain.DocumentEntity;
 import com.example.rag.domain.DocumentStatus;
+import com.example.rag.domain.KnowledgeBase;
 import com.example.rag.domain.RagTask;
 import com.example.rag.domain.TaskStatus;
+import com.example.rag.mapper.DocumentMapper;
+import com.example.rag.mapper.KnowledgeBaseMapper;
+import com.example.rag.mapper.RagTaskMapper;
 import com.example.rag.model.EmbeddingClient;
 import com.example.rag.parser.DocumentParserService;
 import com.example.rag.parser.TextChunker;
-import com.example.rag.repository.DocumentRepository;
-import com.example.rag.repository.RagTaskRepository;
 import com.example.rag.retrieval.VectorIndexService;
 import com.example.rag.storage.StorageService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -25,34 +26,22 @@ import java.io.InputStream;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * 文档异步入库 Worker。
  *
  * <p>MVP 阶段没有引入 MQ，而是使用数据库任务表 {@code rag_tasks} 作为轻量队列。
  * Scheduler 周期性拉取 PENDING 任务并在独立事务中处理，每个任务完成文档解析、
- * 清洗切分、Embedding 和向量入库。后续迁移 RabbitMQ/Kafka 时，该类的处理逻辑
+ * 清洗切分、Embedding 和 Milvus 向量入库。后续迁移 RabbitMQ/Kafka 时，该类的处理逻辑
  * 可以保留，触发方式替换为消息消费即可。</p>
  */
 @Service
 public class IngestionWorker {
     private static final Logger log = LoggerFactory.getLogger(IngestionWorker.class);
 
-    public IngestionWorker(RagTaskRepository taskRepository, DocumentRepository documentRepository, StorageService storageService, DocumentParserService parserService, TextChunker textChunker, EmbeddingClient embeddingClient, VectorIndexService vectorIndexService, AppProperties properties, TransactionTemplate transactionTemplate) {
-        this.taskRepository = taskRepository;
-        this.documentRepository = documentRepository;
-        this.storageService = storageService;
-        this.parserService = parserService;
-        this.textChunker = textChunker;
-        this.embeddingClient = embeddingClient;
-        this.vectorIndexService = vectorIndexService;
-        this.properties = properties;
-        this.transactionTemplate = transactionTemplate;
-    }
-
-    private final RagTaskRepository taskRepository;
-    private final DocumentRepository documentRepository;
+    private final RagTaskMapper taskMapper;
+    private final DocumentMapper documentMapper;
+    private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final StorageService storageService;
     private final DocumentParserService parserService;
     private final TextChunker textChunker;
@@ -62,12 +51,34 @@ public class IngestionWorker {
     private final TransactionTemplate transactionTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    public IngestionWorker(RagTaskMapper taskMapper,
+                           DocumentMapper documentMapper,
+                           KnowledgeBaseMapper knowledgeBaseMapper,
+                           StorageService storageService,
+                           DocumentParserService parserService,
+                           TextChunker textChunker,
+                           EmbeddingClient embeddingClient,
+                           VectorIndexService vectorIndexService,
+                           AppProperties properties,
+                           TransactionTemplate transactionTemplate) {
+        this.taskMapper = taskMapper;
+        this.documentMapper = documentMapper;
+        this.knowledgeBaseMapper = knowledgeBaseMapper;
+        this.storageService = storageService;
+        this.parserService = parserService;
+        this.textChunker = textChunker;
+        this.embeddingClient = embeddingClient;
+        this.vectorIndexService = vectorIndexService;
+        this.properties = properties;
+        this.transactionTemplate = transactionTemplate;
+    }
+
     @Scheduled(fixedDelayString = "${app.ingestion.fixed-delay-ms:5000}")
     public void run() {
         if (!properties.ingestion().workerEnabled()) {
             return;
         }
-        List<RagTask> tasks = taskRepository.findRunnable(TaskStatus.PENDING, PageRequest.of(0, properties.ingestion().batchSize()));
+        List<RagTask> tasks = taskMapper.selectRunnable(TaskStatus.PENDING, properties.ingestion().batchSize());
         if (!tasks.isEmpty()) {
             log.info("Ingestion worker picked tasks. count={}", tasks.size());
         }
@@ -82,9 +93,19 @@ public class IngestionWorker {
      * <p>这里捕获 {@link Throwable} 是为了保证单个文档失败不会让调度线程退出。
      * 失败任务会根据 attempts/maxAttempts 决定重新置为 PENDING 还是最终 FAILED。</p>
      */
-    void process(UUID taskId) {
-        RagTask task = taskRepository.findById(taskId).orElseThrow();
-        DocumentEntity document = task.getDocument();
+    void process(Long taskId) {
+        RagTask task = taskMapper.selectById(taskId);
+        if (task == null) {
+            throw new BadRequestException("Task not found");
+        }
+        DocumentEntity document = documentMapper.selectById(task.getDocumentId());
+        if (document == null) {
+            throw new BadRequestException("Document not found");
+        }
+        KnowledgeBase kb = knowledgeBaseMapper.selectById(document.getKnowledgeBaseId());
+        if (kb == null || kb.isDeleted()) {
+            throw new BadRequestException("Knowledge base not found");
+        }
         try {
             log.info("Starting ingestion task. taskId={}, documentId={}, fileName={}",
                     task.getId(), document.getId(), document.getFileName());
@@ -93,8 +114,8 @@ public class IngestionWorker {
             task.setStartedAt(Instant.now());
             task.setLockedAt(Instant.now());
             document.setStatus(DocumentStatus.PROCESSING);
-            taskRepository.save(task);
-            documentRepository.save(document);
+            taskMapper.updateById(task);
+            documentMapper.updateById(document);
 
             String text;
             try (InputStream inputStream = storageService.open(document.getObjectKey())) {
@@ -102,15 +123,12 @@ public class IngestionWorker {
             }
             log.debug("Document parsed. taskId={}, documentId={}, textLength={}",
                     task.getId(), document.getId(), text.length());
-            List<String> chunks = textChunker.split(text, document.getKnowledgeBase().getChunkSize(),
-                    document.getKnowledgeBase().getChunkOverlap());
+            List<String> chunks = textChunker.split(text, kb.getChunkSize(), kb.getChunkOverlap());
             if (chunks.isEmpty()) {
                 throw new BadRequestException("Parsed document is empty");
             }
             log.info("Document chunked. taskId={}, documentId={}, chunks={}, chunkSize={}, overlap={}",
-                    task.getId(), document.getId(), chunks.size(),
-                    document.getKnowledgeBase().getChunkSize(),
-                    document.getKnowledgeBase().getChunkOverlap());
+                    task.getId(), document.getId(), chunks.size(), kb.getChunkSize(), kb.getChunkOverlap());
             vectorIndexService.deleteByDocument(document.getId());
             for (int i = 0; i < chunks.size(); i++) {
                 Map<String, Object> metadata = Map.of("fileName", document.getFileName(), "chunkIndex", i);
@@ -139,6 +157,9 @@ public class IngestionWorker {
             if (task.getStatus() == TaskStatus.FAILED) {
                 task.setFinishedAt(Instant.now());
             }
+        } finally {
+            documentMapper.updateById(document);
+            taskMapper.updateById(task);
         }
     }
 }

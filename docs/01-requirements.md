@@ -24,7 +24,7 @@
 
 ## 非功能需求
 
-- 可运行性：本地可通过 Docker Compose 启动 PostgreSQL + MinIO，通过脚本启动后端。
+- 可运行性：本地可通过 Docker Compose 启动 MySQL + Milvus + MinIO，通过脚本启动后端。
 - 可追溯性：问答结果必须返回引用片段、文件名、chunkIndex 和分数。
 - 可维护性：后端按业务模块拆包，前端统一 API 层和错误处理。
 - 可扩展性：保留租户字段、知识库成员表、模型客户端接口、存储接口，便于后续升级。
@@ -34,7 +34,7 @@
 
 当前版本已实现：
 
-- PostgreSQL + pgvector 存储业务数据和向量数据。
+- MySQL 存储业务数据和文档切片，Milvus 存储向量索引。
 - MinIO 保存原始文件。
 - DB 任务表 + Scheduler 处理异步入库。
 - Apache Tika 解析 PDF、DOCX、TXT、Markdown、HTML。

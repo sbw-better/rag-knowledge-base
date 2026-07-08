@@ -1,19 +1,10 @@
 package com.example.rag.domain;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import jakarta.persistence.Table;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 
 import java.time.Instant;
-import java.util.UUID;
 
 /**
  * 上传文档实体。
@@ -21,24 +12,13 @@ import java.util.UUID;
  * <p>该实体保存文档元数据和处理状态，不保存原始文件内容。原始文件保存在 MinIO，
  * 数据库通过 {@link #objectKey} 记录对象存储路径；解析后的文本切片保存在 {@link DocumentChunk}。</p>
  */
-@Entity
-@Table(name = "documents")
+@TableName("documents")
 public class DocumentEntity {
-    @Id
-    private UUID id;
-
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "tenant_id")
-    private Tenant tenant;
-
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "knowledge_base_id")
-    private KnowledgeBase knowledgeBase;
-
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "uploaded_by")
-    private UserAccount uploadedBy;
-
+    @TableId(type = IdType.ASSIGN_ID)
+    private Long id;
+    private Long tenantId;
+    private Long knowledgeBaseId;
+    private Long uploadedBy;
     private String fileName;
     private String contentType;
 
@@ -51,58 +31,44 @@ public class DocumentEntity {
     /**
      * 文档处理状态：上传后为 UPLOADED，入库中为 PROCESSING，完成后为 INDEXED，失败为 FAILED。
      */
-    @Enumerated(EnumType.STRING)
     private DocumentStatus status;
 
     /**
      * 解析、Embedding 或向量入库失败时记录的错误摘要，便于前端和日志排查。
      */
-    @Column(columnDefinition = "text")
     private String errorMessage;
     private Instant createdAt;
     private Instant updatedAt;
 
-    @PrePersist
-    void prePersist() {
-        createdAt = Instant.now();
-        updatedAt = createdAt;
-    }
-
-    @PreUpdate
-    void preUpdate() {
-        updatedAt = Instant.now();
-    }
-    // Generated accessors
-
-    public UUID getId() {
+    public Long getId() {
         return id;
     }
 
-    public void setId(UUID id) {
+    public void setId(Long id) {
         this.id = id;
     }
 
-    public Tenant getTenant() {
-        return tenant;
+    public Long getTenantId() {
+        return tenantId;
     }
 
-    public void setTenant(Tenant tenant) {
-        this.tenant = tenant;
+    public void setTenantId(Long tenantId) {
+        this.tenantId = tenantId;
     }
 
-    public KnowledgeBase getKnowledgeBase() {
-        return knowledgeBase;
+    public Long getKnowledgeBaseId() {
+        return knowledgeBaseId;
     }
 
-    public void setKnowledgeBase(KnowledgeBase knowledgeBase) {
-        this.knowledgeBase = knowledgeBase;
+    public void setKnowledgeBaseId(Long knowledgeBaseId) {
+        this.knowledgeBaseId = knowledgeBaseId;
     }
 
-    public UserAccount getUploadedBy() {
+    public Long getUploadedBy() {
         return uploadedBy;
     }
 
-    public void setUploadedBy(UserAccount uploadedBy) {
+    public void setUploadedBy(Long uploadedBy) {
         this.uploadedBy = uploadedBy;
     }
 
@@ -169,5 +135,4 @@ public class DocumentEntity {
     public void setUpdatedAt(Instant updatedAt) {
         this.updatedAt = updatedAt;
     }
-
 }

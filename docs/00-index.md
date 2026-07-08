@@ -18,10 +18,11 @@
 | 10 | [测试方案](10-test-plan.md) | 测试、开发 | 执行测试和验收 |
 | 11 | [运维手册](11-operations.md) | 运维、开发 | 排查常见问题 |
 | 12 | [生产级演进路线](12-roadmap.md) | 技术负责人、开发 | 规划后续升级 |
+| 13 | [MySQL/MyBatis-Plus/Milvus 迁移记录](13-migration-record.md) | 技术负责人、后端、运维 | 了解本次迁移原因、风险和回滚方案 |
 
 ## 当前项目状态
 
-- 后端：Spring Boot 3 + PostgreSQL + pgvector + MinIO。
+- 后端：Spring Boot 3 + MySQL + MyBatis-Plus + Milvus + MinIO。
 - 前端：Vite + React + TypeScript。
 - 部署：本地开发推荐 Docker 启动依赖服务，Spring Boot 和 Vite 本机启动。
 - 当前阶段：MVP 已可运行，正在向生产级标准逐步演进。

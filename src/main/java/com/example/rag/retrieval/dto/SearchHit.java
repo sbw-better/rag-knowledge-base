@@ -1,7 +1,5 @@
 package com.example.rag.retrieval.dto;
 
-import java.util.UUID;
-
 /**
  * 检索命中的文档切片。
  *
@@ -9,8 +7,8 @@ import java.util.UUID;
  * 不应跨不同检索模式直接比较。</p>
  */
 public record SearchHit(
-        UUID chunkId,
-        UUID documentId,
+        String chunkId,
+        String documentId,
         String fileName,
         int chunkIndex,
         String content,

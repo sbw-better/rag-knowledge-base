@@ -12,11 +12,11 @@
 
 | 配置 | 默认值 | 说明 |
 | --- | --- | --- |
-| `DB_URL` | `jdbc:postgresql://localhost:5432/ragkb` | PostgreSQL 地址 |
+| `DB_URL` | `jdbc:mysql://localhost:3306/ragkb?...` | MySQL 地址 |
 | `DB_USERNAME` | `rag` | 数据库用户名 |
 | `DB_PASSWORD` | `rag` | 数据库密码 |
 
-JPA 使用 `ddl-auto=validate`，表结构由 Flyway 管理。
+表结构由 Flyway 管理，数据访问由 MyBatis-Plus Mapper 完成。
 
 ## 上传限制
 
@@ -45,6 +45,17 @@ JPA 使用 `ddl-auto=validate`，表结构由 Flyway 管理。
 
 MinIO 用于保存上传原始文件，数据库只保存 object key 和文档元数据。
 
+## Milvus
+
+| 配置 | 默认值 | 说明 |
+| --- | --- | --- |
+| `MILVUS_ENDPOINT` | `http://localhost:19530` | Milvus REST/gRPC 地址 |
+| `MILVUS_DATABASE` | `default` | Milvus database |
+| `MILVUS_COLLECTION` | `rag_document_chunks` | 文档切片向量 collection |
+| `MILVUS_ENABLED` | `true` | 是否启用 Milvus 写入和检索 |
+
+启动时后端会检查并创建 collection。`OPENAI_EMBEDDING_DIMENSIONS` 必须和 collection 向量维度一致；如果维度变化，需要重建 collection。
+
 ## 模型服务
 
 | 配置 | 默认值 | 说明 |
@@ -55,7 +66,7 @@ MinIO 用于保存上传原始文件，数据库只保存 object key 和文档�
 | `OPENAI_EMBEDDING_MODEL` | `text-embedding-v4` | Embedding 模型 |
 | `OPENAI_EMBEDDING_DIMENSIONS` | `1536` | 向量维度 |
 
-注意：数据库 `document_chunks.embedding` 当前为 `vector(1536)`，如果调整向量维度，需要同步迁移数据库表结构和索引。
+仓库中不保存真实 API Key。开发环境未配置 key 时，模型调用会走本地 fallback；生产环境必须配置真实 key。
 
 ## 入库任务
 

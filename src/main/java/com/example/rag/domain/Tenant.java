@@ -1,15 +1,10 @@
 package com.example.rag.domain;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import jakarta.persistence.Table;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 
 import java.time.Instant;
-import java.util.UUID;
 
 /**
  * 租户实体。
@@ -17,15 +12,13 @@ import java.util.UUID;
  * <p>租户用于隔离不同组织的数据。MVP 阶段默认创建一个 {@code Default} 租户，
  * 但多数业务表已经保留 tenant_id，后续可以扩展为真正的多租户系统。</p>
  */
-@Entity
-@Table(name = "tenants")
+@TableName("tenants")
 public class Tenant {
     public Tenant() {
     }
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    @TableId(type = IdType.ASSIGN_ID)
+    private Long id;
     private String name;
     private Instant createdAt;
     private Instant updatedAt;
@@ -34,23 +27,11 @@ public class Tenant {
         this.name = name;
     }
 
-    @PrePersist
-    void prePersist() {
-        createdAt = Instant.now();
-        updatedAt = createdAt;
-    }
-
-    @PreUpdate
-    void preUpdate() {
-        updatedAt = Instant.now();
-    }
-    // Generated accessors
-
-    public UUID getId() {
+    public Long getId() {
         return id;
     }
 
-    public void setId(UUID id) {
+    public void setId(Long id) {
         this.id = id;
     }
 
@@ -77,5 +58,4 @@ public class Tenant {
     public void setUpdatedAt(Instant updatedAt) {
         this.updatedAt = updatedAt;
     }
-
 }
