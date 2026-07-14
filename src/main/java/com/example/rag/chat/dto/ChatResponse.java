@@ -9,5 +9,5 @@ import java.util.List;
  * 前端可用 conversationId 继续追问，也可以用 citations 渲染可追溯来源。</p>
  */
 public record ChatResponse(String conversationId, String userMessageId, String assistantMessageId,
-                           String answer, List<Citation> citations) {
+                           String answer, ChatAnswerStatus answerStatus, List<Citation> citations) {
 }

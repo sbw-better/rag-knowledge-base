@@ -56,7 +56,7 @@ Authorization: Bearer <jwt-token>
 {
   "token": "jwt-token",
   "user": {
-    "id": "uuid",
+    "id": "1900000000000000000",
     "email": "user@example.com",
     "displayName": "张三",
     "roles": ["ADMIN"]
@@ -77,9 +77,49 @@ Authorization: Bearer <jwt-token>
 
 返回当前登录用户。
 
+## 管理用户
+
+### GET /api/admin/users
+
+返回当前租户下用户列表，仅 `ADMIN` 可访问。用于平台用户角色配置。
+
+响应数据项：
+
+```json
+{
+  "id": "1900000000000000000",
+  "email": "user@example.com",
+  "displayName": "张三",
+  "enabled": true,
+  "roles": ["USER"],
+  "createdAt": "2026-07-13T08:00:00Z"
+}
+```
+
+### PATCH /api/admin/users/{id}/roles
+
+更新用户系统角色，仅 `ADMIN` 可访问。`USER` 是基础角色，后端会自动保留；不要把知识库负责人 owner 当成系统角色分配，owner 会在创建知识库时自动产生。
+
+请求：
+
+```json
+{
+  "roles": ["USER", "KB_MANAGER"]
+}
+```
+
+说明：
+
+- `ADMIN`：平台管理员，可管理用户和租户内知识库。
+- `KB_MANAGER`：知识库管理员，可创建知识库，并管理自己创建的知识库。
+- `USER`：基础用户，只能访问被授权的知识库。
+- 当前登录管理员不能移除自己的 `ADMIN` 角色。
+
 ## 知识库
 
 ### POST /api/knowledge-bases
+
+创建知识库，仅 `ADMIN` 或 `KB_MANAGER` 可调用。创建成功后，创建者会成为该知识库的 owner，后续可上传文档、维护设置、授权成员。
 
 ```json
 {
@@ -95,6 +135,15 @@ Authorization: Bearer <jwt-token>
 
 返回当前用户可访问的知识库列表。
 
+知识库响应中的 `manageable` 表示当前用户是否拥有任意维护能力。更细粒度的页面入口应优先使用能力字段：
+
+- `permission`：当前用户对该知识库的有效权限，可能为 `ADMIN`、`OWNER`、`MANAGER`、`EDITOR`、`VIEWER`。
+- `canManageDocuments`：可上传文档、查看文档任务、使用检索调试。
+- `canManageMembers`：可授权或移除成员。
+- `canManageConfig`：可修改名称、描述、切片参数和默认 TopK。
+- `canManageOperations`：可重建 Milvus 索引。
+- `canDelete`：可删除知识库，仅 owner 或 `ADMIN` 为 true。
+
 ### GET /api/knowledge-bases/{id}
 
 返回知识库详情。
@@ -103,13 +152,15 @@ Authorization: Bearer <jwt-token>
 
 返回当前知识库下的文档和每个文档最近一次入库任务。
 
+仅 `EDITOR`、`MANAGER`、owner 或 `ADMIN` 可访问，普通 `VIEWER` 不需要查看入库任务。
+
 响应数据项：
 
 ```json
 {
   "document": {
-    "id": "uuid",
-    "knowledgeBaseId": "uuid",
+    "id": "1900000000000000001",
+    "knowledgeBaseId": "1900000000000000000",
     "fileName": "example.docx",
     "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "sizeBytes": 1024,
@@ -118,8 +169,8 @@ Authorization: Bearer <jwt-token>
     "createdAt": "2026-06-23T10:00:00Z"
   },
   "task": {
-    "id": "uuid",
-    "documentId": "uuid",
+    "id": "1900000000000000002",
+    "documentId": "1900000000000000001",
     "type": "INGEST_DOCUMENT",
     "status": "SUCCEEDED",
     "attempts": 1,
@@ -132,11 +183,68 @@ Authorization: Bearer <jwt-token>
 
 ### PATCH /api/knowledge-bases/{id}
 
-更新名称、描述、切片参数和默认 TopK。
+更新名称、描述、切片参数和默认 TopK，仅知识库 owner 或 `ADMIN` 可调用。
 
 ### DELETE /api/knowledge-bases/{id}
 
-软删除知识库。
+软删除知识库，仅知识库 owner 或 `ADMIN` 可调用。
+
+### GET /api/knowledge-bases/{id}/members
+
+查询知识库授权成员，仅 `MANAGER`、owner 或 `ADMIN` 可访问。
+
+### GET /api/knowledge-bases/{id}/member-candidates
+
+查询当前知识库可授权的租户用户，仅 `MANAGER`、owner 或 `ADMIN` 可访问。前端成员授权页面使用该接口加载候选用户；它不会授予平台级角色。
+
+返回规则：
+
+- 排除当前知识库 owner，因为 owner 已拥有完整管理权限。
+- 排除 `ADMIN` 用户，因为平台管理员天然可访问租户内知识库，不需要知识库成员授权。
+
+### POST /api/knowledge-bases/{id}/members
+
+添加或更新知识库成员授权。
+
+不能把当前知识库 owner 或 `ADMIN` 用户添加为知识库成员。
+
+请求：
+
+```json
+{
+  "userId": "1900000000000000007",
+  "permission": "VIEWER"
+}
+```
+
+`permission` 当前支持：
+
+- `VIEWER`：普通问答用户。
+- `EDITOR`：可维护文档和使用检索调试。
+- `MANAGER`：拥有 `EDITOR` 能力，并可维护成员、配置和重建索引。
+
+### DELETE /api/knowledge-bases/{id}/members/{userId}
+
+移除知识库成员授权。
+
+### POST /api/knowledge-bases/{id}/rebuild-index
+
+从 MySQL `document_chunks` 重新生成 Embedding，并重写当前知识库在 Milvus 中的向量索引。
+
+权限：
+
+- 仅 `MANAGER`、owner 或 `ADMIN` 可调用。
+- 普通用户不应在前端看到该入口。
+
+响应：
+
+```json
+{
+  "knowledgeBaseId": "1900000000000000000",
+  "chunkCount": 12,
+  "rebuiltCount": 12
+}
+```
 
 ## 文档
 
@@ -175,7 +283,7 @@ Authorization: Bearer <jwt-token>
 
 ```json
 {
-  "knowledgeBaseId": "uuid",
+  "knowledgeBaseId": "1900000000000000000",
   "query": "参数还原接口怎么用",
   "mode": "HYBRID",
   "topK": 5
@@ -194,8 +302,8 @@ Authorization: Bearer <jwt-token>
 {
   "hits": [
     {
-      "chunkId": "uuid",
-      "documentId": "uuid",
+      "chunkId": "1900000000000000003",
+      "documentId": "1900000000000000001",
       "fileName": "接口说明.docx",
       "chunkIndex": 3,
       "content": "命中的片段内容",
@@ -214,7 +322,7 @@ Authorization: Bearer <jwt-token>
 
 ```json
 {
-  "knowledgeBaseId": "uuid",
+  "knowledgeBaseId": "1900000000000000000",
   "conversationId": null,
   "question": "参数还原接口怎么调用？",
   "topK": 5
@@ -225,14 +333,15 @@ Authorization: Bearer <jwt-token>
 
 ```json
 {
-  "conversationId": "uuid",
-  "userMessageId": "uuid",
-  "assistantMessageId": "uuid",
+  "conversationId": "1900000000000000004",
+  "userMessageId": "1900000000000000005",
+  "assistantMessageId": "1900000000000000006",
   "answer": "回答内容",
+  "answerStatus": "ANSWERED",
   "citations": [
     {
-      "documentId": "uuid",
-      "chunkId": "uuid",
+      "documentId": "1900000000000000001",
+      "chunkId": "1900000000000000003",
       "fileName": "接口说明.docx",
       "chunkIndex": 3,
       "score": 0.82,
@@ -242,6 +351,14 @@ Authorization: Bearer <jwt-token>
 }
 ```
 
+`answerStatus` 表示本次问答是否真正基于知识库上下文完成：
+
+- `ANSWERED`：检索到可用片段，并基于上下文生成回答。
+- `EMPTY_KB`：当前知识库还没有任何可用文档切片，后端不会调用大模型，会返回固定提示。
+- `NO_CONTEXT`：知识库有资料，但本次问题没有检索到相关片段，后端不会调用大模型，会返回固定提示。
+
+当 `answerStatus` 为 `EMPTY_KB` 或 `NO_CONTEXT` 时，`citations` 为空。这样可以避免知识库证据不足时模型自由发挥。
+
 ### GET /api/conversations/{id}
 
 查询会话消息和引用。
@@ -250,6 +367,9 @@ Authorization: Bearer <jwt-token>
 
 1. 注册或登录，保存 token。
 2. 创建知识库。
-3. 上传文档。
-4. 轮询任务状态。
-5. 任务成功后执行检索或问答。
+3. 在知识库设置中把知识库授权给普通用户。
+4. 上传文档。
+5. 轮询任务状态。
+6. 任务成功后执行检索或问答。
+
+说明：系统允许先创建空知识库并授权成员，但空知识库问答会返回 `EMPTY_KB`，不会让模型编造答案。

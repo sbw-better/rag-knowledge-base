@@ -15,6 +15,13 @@ public record KnowledgeBaseResponse(
         int chunkSize,
         int chunkOverlap,
         int topK,
-        Instant createdAt
+        Instant createdAt,
+        boolean manageable,
+        String permission,
+        boolean canManageDocuments,
+        boolean canManageMembers,
+        boolean canManageConfig,
+        boolean canManageOperations,
+        boolean canDelete
 ) {
 }

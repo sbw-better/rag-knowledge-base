@@ -63,7 +63,7 @@ public class DocumentService {
         String safeFileName = sanitizeFileName(file.getOriginalFilename());
         validateFile(safeFileName);
         UserAccount user = CurrentUser.required();
-        KnowledgeBase kb = knowledgeBaseService.requireAccess(knowledgeBaseId);
+        KnowledgeBase kb = knowledgeBaseService.requireContentManageAccess(knowledgeBaseId);
         log.info("Document upload requested. tenantId={}, userId={}, knowledgeBaseId={}, fileName={}, sizeBytes={}",
                 user.getTenantId(), user.getId(), knowledgeBaseId, safeFileName, file.getSize());
 
@@ -108,7 +108,7 @@ public class DocumentService {
 
     public List<DocumentItem> listByKnowledgeBase(Long knowledgeBaseId) {
         UserAccount user = CurrentUser.required();
-        knowledgeBaseService.requireAccess(knowledgeBaseId);
+        knowledgeBaseService.requireContentManageAccess(knowledgeBaseId);
         List<DocumentItem> documents = documentMapper.selectByKnowledgeBaseIdAndTenantId(knowledgeBaseId, user.getTenantId())
                 .stream()
                 .map(document -> new DocumentItem(

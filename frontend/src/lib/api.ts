@@ -3,15 +3,20 @@ import { clearAuth, getToken, setAuth } from "./auth";
 import type {
   ApiResponse,
   AuthResponse,
+  AdminUserResponse,
   ChatResponse,
   ConversationResponse,
   DocumentItem,
   DocumentResponse,
   KnowledgeBaseRequest,
+  KnowledgeBaseMemberRequest,
+  KnowledgeBaseMemberResponse,
   KnowledgeBaseResponse,
+  RebuildIndexResponse,
   SearchMode,
   SearchResponse,
   TaskResponse,
+  UpdateUserRolesRequest,
   UploadResponse,
   UserResponse
 } from "../types";
@@ -165,6 +170,15 @@ export const api = {
     return apiClient.get<unknown, UserResponse>("/auth/me");
   },
 
+  async listAdminUsers() {
+    const data = await apiClient.get<unknown, unknown>("/admin/users");
+    return normalizeArray<AdminUserResponse>(data, "用户列表");
+  },
+
+  updateUserRoles(id: string, payload: UpdateUserRolesRequest) {
+    return apiClient.patch<unknown, AdminUserResponse>(`/admin/users/${id}/roles`, payload);
+  },
+
   async listKnowledgeBases() {
     const data = await apiClient.get<unknown, unknown>("/knowledge-bases");
     return normalizeArray<KnowledgeBaseResponse>(data, "知识库列表");
@@ -184,6 +198,28 @@ export const api = {
 
   deleteKnowledgeBase(id: string) {
     return apiClient.delete<unknown, null>(`/knowledge-bases/${id}`);
+  },
+
+  async listKnowledgeBaseMembers(id: string) {
+    const data = await apiClient.get<unknown, unknown>(`/knowledge-bases/${id}/members`);
+    return normalizeArray<KnowledgeBaseMemberResponse>(data, "知识库成员列表");
+  },
+
+  async listKnowledgeBaseMemberCandidates(id: string) {
+    const data = await apiClient.get<unknown, unknown>(`/knowledge-bases/${id}/member-candidates`);
+    return normalizeArray<AdminUserResponse>(data, "可授权用户列表");
+  },
+
+  saveKnowledgeBaseMember(id: string, payload: KnowledgeBaseMemberRequest) {
+    return apiClient.post<unknown, KnowledgeBaseMemberResponse>(`/knowledge-bases/${id}/members`, payload);
+  },
+
+  removeKnowledgeBaseMember(id: string, userId: string) {
+    return apiClient.delete<unknown, null>(`/knowledge-bases/${id}/members/${userId}`);
+  },
+
+  rebuildKnowledgeBaseIndex(id: string) {
+    return apiClient.post<unknown, RebuildIndexResponse>(`/knowledge-bases/${id}/rebuild-index`);
   },
 
   uploadDocument(knowledgeBaseId: string, file: File) {

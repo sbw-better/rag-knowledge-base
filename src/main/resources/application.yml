@@ -41,7 +41,7 @@ app:
     enabled: ${MILVUS_ENABLED:true}
   model:
     base-url: ${OPENAI_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
-    api-key: ${OPENAI_API_KEY:}
+    api-key: ${OPENAI_API_KEY:sk-ws-H.RPPIMLY.objC.MEYCIQCiBL6fUaNV1O9H57QQglOT0RLcXcGwb95ARWfIHqt_BQIhAKHEvMIvd8IHuM6G-I6dT8Ao8XScmMv_S7_DpzOmtaEu}
     chat-model: ${OPENAI_CHAT_MODEL:qwen3.7-plus}
     embedding-model: ${OPENAI_EMBEDDING_MODEL:text-embedding-v4}
     embedding-dimensions: ${OPENAI_EMBEDDING_DIMENSIONS:1536}

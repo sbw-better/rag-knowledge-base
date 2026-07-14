@@ -12,6 +12,7 @@ import com.example.rag.domain.MessageEntity;
 import com.example.rag.domain.MessageRole;
 import com.example.rag.domain.UserAccount;
 import com.example.rag.chat.dto.ChatRequest;
+import com.example.rag.chat.dto.ChatAnswerStatus;
 import com.example.rag.chat.dto.ChatResponse;
 import com.example.rag.chat.dto.Citation;
 import com.example.rag.chat.dto.ConversationResponse;
@@ -44,6 +45,8 @@ import java.util.List;
 @Service
 public class ChatService {
     private static final Logger log = LoggerFactory.getLogger(ChatService.class);
+    private static final String EMPTY_KB_ANSWER = "当前知识库还没有可用资料，暂时无法基于知识库回答。请联系知识库负责人上传并完成文档入库后再提问。";
+    private static final String NO_CONTEXT_ANSWER = "当前知识库没有检索到与问题相关的资料，因此无法基于知识库给出可靠回答。你可以换个问法，或联系知识库负责人补充相关文档。";
 
     private final KnowledgeBaseService knowledgeBaseService;
     private final SearchService searchService;
@@ -86,7 +89,15 @@ public class ChatService {
 
         MessageEntity userMessage = saveMessage(conversation, MessageRole.USER, request.question(), null);
         int topK = request.topK() == null ? kb.getTopK() : request.topK();
+        if (chunkMapper.countByTenantIdAndKnowledgeBaseId(kb.getTenantId(), kb.getId()) == 0) {
+            return finishWithoutModel(user, kb, conversation, userMessage, EMPTY_KB_ANSWER, ChatAnswerStatus.EMPTY_KB, startedAt);
+        }
+
         List<SearchCandidate> hits = searchService.searchInternal(kb, request.question(), SearchMode.HYBRID, topK);
+        if (hits.isEmpty()) {
+            return finishWithoutModel(user, kb, conversation, userMessage, NO_CONTEXT_ANSWER, ChatAnswerStatus.NO_CONTEXT, startedAt);
+        }
+
         String answer = llmClient.chat(promptBuilder.build(request.question(), hits));
         MessageEntity assistantMessage = saveMessage(conversation, MessageRole.ASSISTANT, answer, null);
         List<Citation> citations = saveCitations(assistantMessage, hits);
@@ -101,7 +112,29 @@ public class ChatService {
                 userMessage.getId().toString(),
                 assistantMessage.getId().toString(),
                 answer,
+                ChatAnswerStatus.ANSWERED,
                 citations);
+    }
+
+    private ChatResponse finishWithoutModel(UserAccount user,
+                                            KnowledgeBase kb,
+                                            Conversation conversation,
+                                            MessageEntity userMessage,
+                                            String answer,
+                                            ChatAnswerStatus status,
+                                            long startedAt) {
+        MessageEntity assistantMessage = saveMessage(conversation, MessageRole.ASSISTANT, answer, null);
+        conversation.setUpdatedAt(Instant.now());
+        conversationMapper.updateById(conversation);
+        log.info("Chat completed without model. tenantId={}, userId={}, knowledgeBaseId={}, conversationId={}, status={}, costMs={}",
+                user.getTenantId(), user.getId(), kb.getId(), conversation.getId(), status, elapsedMs(startedAt));
+        return new ChatResponse(
+                conversation.getId().toString(),
+                userMessage.getId().toString(),
+                assistantMessage.getId().toString(),
+                answer,
+                status,
+                List.of());
     }
 
     @Transactional(readOnly = true)

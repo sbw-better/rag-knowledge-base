@@ -16,6 +16,19 @@ export type AuthResponse = {
   user: UserResponse;
 };
 
+export type AdminUserResponse = {
+  id: string;
+  email: string;
+  displayName: string;
+  enabled: boolean;
+  roles: string[];
+  createdAt: string;
+};
+
+export type UpdateUserRolesRequest = {
+  roles: string[];
+};
+
 export type KnowledgeBaseRequest = {
   name: string;
   description?: string;
@@ -32,6 +45,33 @@ export type KnowledgeBaseResponse = {
   chunkOverlap: number;
   topK: number;
   createdAt: string;
+  manageable: boolean;
+  permission: string;
+  canManageDocuments: boolean;
+  canManageMembers: boolean;
+  canManageConfig: boolean;
+  canManageOperations: boolean;
+  canDelete: boolean;
+};
+
+export type RebuildIndexResponse = {
+  knowledgeBaseId: string;
+  chunkCount: number;
+  rebuiltCount: number;
+};
+
+export type KnowledgeBaseMemberResponse = {
+  id: string;
+  userId: string;
+  email: string;
+  displayName: string;
+  permission: string;
+  createdAt: string;
+};
+
+export type KnowledgeBaseMemberRequest = {
+  userId: string;
+  permission: "VIEWER" | "EDITOR" | "MANAGER";
 };
 
 export type DocumentResponse = {
@@ -96,6 +136,7 @@ export type ChatResponse = {
   userMessageId: string;
   assistantMessageId: string;
   answer: string;
+  answerStatus?: "ANSWERED" | "EMPTY_KB" | "NO_CONTEXT";
   citations: Citation[];
 };
 

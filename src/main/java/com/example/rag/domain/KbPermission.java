@@ -3,8 +3,9 @@ package com.example.rag.domain;
 /**
  * 知识库成员权限。
  *
- * <p>当前 Service 主要判断是否存在成员关系；该枚举为后续细化只读、编辑、管理权限预留。</p>
+ * <p>OWNER 由知识库创建者或平台管理员隐式获得，不允许作为成员权限手动分配。
+ * VIEWER 面向普通问答用户，EDITOR 可维护文档，MANAGER 可维护成员、配置和索引。</p>
  */
 public enum KbPermission {
-    OWNER, EDITOR, VIEWER
+    OWNER, MANAGER, EDITOR, VIEWER
 }

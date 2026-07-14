@@ -20,6 +20,12 @@ public interface DocumentChunkMapper extends BaseMapper<DocumentChunk> {
     @Select("select * from document_chunks where document_id = #{documentId} order by chunk_index asc")
     List<DocumentChunk> selectByDocumentId(Long documentId);
 
+    @Select("select * from document_chunks where knowledge_base_id = #{knowledgeBaseId} order by document_id asc, chunk_index asc")
+    List<DocumentChunk> selectByKnowledgeBaseId(Long knowledgeBaseId);
+
+    @Select("select count(1) from document_chunks where tenant_id = #{tenantId} and knowledge_base_id = #{knowledgeBaseId}")
+    int countByTenantIdAndKnowledgeBaseId(@Param("tenantId") Long tenantId, @Param("knowledgeBaseId") Long knowledgeBaseId);
+
     @Select("""
             select c.id chunk_id, c.document_id, d.file_name, c.chunk_index, c.content,
                    case when lower(c.content) like #{like} then 1.0

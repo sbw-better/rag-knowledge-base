@@ -6,6 +6,7 @@ import { clearAuth, getToken } from "./lib/auth";
 import AuthPage from "./pages/AuthPage";
 import KnowledgeBasePage from "./pages/KnowledgeBasePage";
 import KnowledgeBasesPage from "./pages/KnowledgeBasesPage";
+import UsersPage from "./pages/UsersPage";
 import WorkspaceLayout from "./pages/WorkspaceLayout";
 
 /**
@@ -73,6 +74,7 @@ export default function App() {
         <Route index element={<Navigate to="/app/knowledge-bases" replace />} />
         <Route path="knowledge-bases" element={<KnowledgeBasesPage />} />
         <Route path="knowledge-bases/:id" element={<KnowledgeBasePage />} />
+        <Route path="users" element={<UsersPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

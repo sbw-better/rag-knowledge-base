@@ -1,11 +1,16 @@
 package com.example.rag.knowledge;
 
 import com.example.rag.common.ApiResponse;
+import com.example.rag.auth.dto.AdminUserResponse;
 import com.example.rag.document.DocumentService;
 import com.example.rag.document.dto.DocumentItem;
 import com.example.rag.document.dto.UploadResponse;
 import com.example.rag.knowledge.dto.KnowledgeBaseRequest;
+import com.example.rag.knowledge.dto.KnowledgeBaseMemberRequest;
+import com.example.rag.knowledge.dto.KnowledgeBaseMemberResponse;
 import com.example.rag.knowledge.dto.KnowledgeBaseResponse;
+import com.example.rag.retrieval.IndexMaintenanceService;
+import com.example.rag.retrieval.dto.RebuildIndexResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -31,13 +36,17 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/knowledge-bases")
 public class KnowledgeBaseController {
-    public KnowledgeBaseController(KnowledgeBaseService knowledgeBaseService, DocumentService documentService) {
+    public KnowledgeBaseController(KnowledgeBaseService knowledgeBaseService,
+                                   DocumentService documentService,
+                                   IndexMaintenanceService indexMaintenanceService) {
         this.knowledgeBaseService = knowledgeBaseService;
         this.documentService = documentService;
+        this.indexMaintenanceService = indexMaintenanceService;
     }
 
     private final KnowledgeBaseService knowledgeBaseService;
     private final DocumentService documentService;
+    private final IndexMaintenanceService indexMaintenanceService;
 
     /**
      * 创建知识库。
@@ -77,6 +86,32 @@ public class KnowledgeBaseController {
     }
 
     /**
+     * 查询知识库授权成员。仅 owner 或 ADMIN 可见。
+     */
+    @GetMapping("/{id}/members")
+    ApiResponse<List<KnowledgeBaseMemberResponse>> listMembers(@PathVariable Long id) {
+        return ApiResponse.ok(knowledgeBaseService.listMembers(id));
+    }
+
+    /**
+     * 查询当前知识库可授权的租户用户。仅 owner 或 ADMIN 可见。
+     */
+    @GetMapping("/{id}/member-candidates")
+    ApiResponse<List<AdminUserResponse>> listMemberCandidates(@PathVariable Long id) {
+        return ApiResponse.ok(knowledgeBaseService.listMemberCandidates(id));
+    }
+
+    /**
+     * 添加或更新知识库成员授权。
+     */
+    @PostMapping("/{id}/members")
+    ApiResponse<KnowledgeBaseMemberResponse> saveMember(
+            @PathVariable Long id,
+            @Valid @RequestBody KnowledgeBaseMemberRequest request) {
+        return ApiResponse.ok(knowledgeBaseService.saveMember(id, request));
+    }
+
+    /**
      * 修改知识库基础信息和默认检索参数。
      */
     @PatchMapping("/{id}")
@@ -95,6 +130,26 @@ public class KnowledgeBaseController {
     ApiResponse<Void> delete(@PathVariable Long id) {
         knowledgeBaseService.delete(id);
         return ApiResponse.ok(null);
+    }
+
+    /**
+     * 移除知识库成员授权。
+     */
+    @DeleteMapping("/{id}/members/{userId}")
+    ApiResponse<Void> removeMember(@PathVariable Long id, @PathVariable Long userId) {
+        knowledgeBaseService.removeMember(id, userId);
+        return ApiResponse.ok(null);
+    }
+
+    /**
+     * 从 MySQL 文档切片重建 Milvus 向量索引。
+     *
+     * <p>该接口用于 Milvus 数据丢失、collection 重建、模型维度确认后重新生成索引。
+     * 只有知识库 owner 或 ADMIN 可以执行。</p>
+     */
+    @PostMapping("/{id}/rebuild-index")
+    ApiResponse<RebuildIndexResponse> rebuildIndex(@PathVariable Long id) {
+        return ApiResponse.ok(indexMaintenanceService.rebuildKnowledgeBase(id));
     }
 
     /**

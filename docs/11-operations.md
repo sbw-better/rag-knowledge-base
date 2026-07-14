@@ -27,6 +27,7 @@ docker ps
 - `ragkb-milvus`
 - `ragkb-milvus-etcd`
 - `ragkb-milvus-minio`
+- `ragkb-attu`
 - `ragkb-app`
 
 ## 查看后端日志
@@ -59,6 +60,23 @@ select id, document_id, status, attempts, error_message from rag_tasks order by 
 select knowledge_base_id, count(*) from document_chunks group by knowledge_base_id;
 ```
 
+## 重置开发数据
+
+如果需要清空本地开发阶段创建的用户、知识库、文档、任务、会话和授权关系，可执行：
+
+```powershell
+cd D:\ai-projects\rag-knowledge-base
+.\scripts\reset-dev-data.ps1 -Force
+```
+
+注意：
+
+- 该脚本只清理 MySQL 业务数据。
+- 不删除 MinIO 文件对象。
+- 不删除 Milvus 向量数据。
+- 清空后重新注册的第一个用户会成为 `ADMIN`。
+- 执行前请确认没有需要保留的本地测试数据。
+
 ## 查看 MinIO
 
 浏览器访问：
@@ -86,6 +104,18 @@ http://localhost:19530
 ```
 
 当前项目通过后端启动时的 `MilvusVectorStore.ensureCollection()` 自动检查和创建 collection。
+
+开发环境推荐启动 Attu 查看 Milvus：
+
+```powershell
+docker compose up -d attu
+```
+
+浏览器访问：
+
+```text
+http://localhost:8000
+```
 
 如果向量检索异常，优先查看：
 
@@ -131,6 +161,12 @@ http://localhost:19530
 - 查询和文档语义差距大。
 - 使用了不同维度或不同模型生成问题向量和文档向量。
 - `MILVUS_ENABLED=false`。
+
+处理方式：
+
+- 先确认 MySQL `document_chunks` 是否有切片。
+- 再通过 Attu 查看 `rag_document_chunks` collection 是否有 entity。
+- 管理员可在知识库“设置”中执行“重建向量索引”。
 
 ### Swagger 没有 Authorize
 

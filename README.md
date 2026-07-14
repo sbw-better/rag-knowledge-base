@@ -37,8 +37,10 @@ npm run dev
 | MinIO Console | http://localhost:9001 |
 | MySQL | localhost:3306 |
 | Milvus | http://localhost:19530 |
+| Attu Milvus Console | http://localhost:8000 |
 
 开发环境 MinIO 默认账号为 `minioadmin / minioadmin`。系统账号需要通过注册接口或前端注册页创建，第一个注册用户会自动拥有 `ADMIN` 角色。
+当前系统角色分为 `ADMIN`、`KB_MANAGER`、`USER`：`ADMIN` 负责平台和用户管理，`KB_MANAGER` 可创建知识库并成为自己创建知识库的负责人，`USER` 默认只能访问被授权的知识库。
 
 ## 文档入口
 
@@ -88,13 +90,16 @@ npm run dev
 ## 当前能力
 
 - 用户注册、登录、JWT 鉴权、当前用户查询。
-- 知识库创建、查询、更新、删除。
+- `ADMIN` 可管理用户角色；`ADMIN` 和 `KB_MANAGER` 可创建知识库，创建者自动成为知识库负责人。
+- 知识库查询、更新、删除和成员授权；资源权限细分为 `VIEWER`、`EDITOR`、`MANAGER`。
 - 文档上传到 MinIO，并创建 DB 异步任务。
 - PDF、DOCX、TXT、Markdown、HTML 文本抽取。
 - 文本清洗、切分、Embedding、MySQL 切片入库和 Milvus 向量入库。
 - Milvus 向量检索、MySQL 关键词检索、RRF 混合检索。
 - RAG 问答、引用来源、会话和消息入库。
-- 前端工作台，支持知识库、文档任务、检索测试、问答和设置。
+- 前端工作台，支持知识库、文档任务、检索测试、问答、成员、配置和运维分区。
+- `VIEWER` 只使用问答；`EDITOR` 可维护文档和检索调试；`MANAGER` 可维护成员、配置和索引。
+- 知识库 owner 或 `ADMIN` 仍保留删除知识库等最高风险操作权限。
 
 ## 模型配置
 
@@ -128,6 +133,12 @@ npm run build
 # Docker 依赖服务
 docker compose up -d mysql minio milvus
 docker ps
+
+# 可选：启动 Milvus 可视化控制台
+docker compose up -d attu
+
+# 清空本地开发业务数据，重新注册第一个 ADMIN
+.\scripts\reset-dev-data.ps1 -Force
 ```
 
 ## 生产注意事项

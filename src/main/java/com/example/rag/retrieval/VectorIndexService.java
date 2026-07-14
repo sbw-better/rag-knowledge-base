@@ -44,6 +44,23 @@ public class VectorIndexService {
     }
 
     /**
+     * 只删除某个知识库在 Milvus 中的索引，不删除 MySQL chunk。
+     *
+     * <p>该方法用于“重建向量索引”场景：MySQL 是事实库，chunk 文本必须保留；Milvus 是可重建索引，
+     * 可以先清空指定知识库的向量，再按 MySQL chunk 重新生成 embedding 写入。</p>
+     */
+    public void deleteVectorIndexByKnowledgeBase(Long knowledgeBaseId) {
+        milvusVectorStore.deleteByKnowledgeBase(knowledgeBaseId);
+        log.info("Deleted Milvus vectors for knowledge base. knowledgeBaseId={}", knowledgeBaseId);
+    }
+
+    public void upsertExistingChunk(DocumentEntity document, DocumentChunk chunk, List<Double> embedding) {
+        milvusVectorStore.upsertChunk(document, chunk, embedding);
+        log.debug("Existing chunk vector rebuilt. documentId={}, chunkId={}, chunkIndex={}, embeddingDimensions={}",
+                document.getId(), chunk.getId(), chunk.getChunkIndex(), embedding.size());
+    }
+
+    /**
      * 保存单个切片并写入 Milvus 向量索引。
      *
      * <p>先写 MySQL 生成雪花 chunkId，再把 chunkId 作为 Milvus 主键写入向量库。

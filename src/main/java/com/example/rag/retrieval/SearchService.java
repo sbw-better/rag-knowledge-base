@@ -41,7 +41,7 @@ public class SearchService {
     }
 
     public SearchResponse search(SearchRequest request) {
-        KnowledgeBase kb = knowledgeBaseService.requireAccess(Ids.parse(request.knowledgeBaseId(), "knowledgeBaseId"));
+        KnowledgeBase kb = knowledgeBaseService.requireContentManageAccess(Ids.parse(request.knowledgeBaseId(), "knowledgeBaseId"));
         int topK = request.topK() == null ? kb.getTopK() : request.topK();
         long startedAt = System.nanoTime();
         List<SearchCandidate> hits = searchInternal(kb, request.query(), request.mode(), topK);

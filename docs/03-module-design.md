@@ -21,7 +21,8 @@
 
 - 支持创建、列表、详情、更新、删除。
 - 数据按 `tenant_id` 和知识库所有者隔离。
-- `knowledge_base_members` 表已预留，当前版本主要使用 owner 权限。
+- `knowledge_base_members` 表用于知识库成员授权。系统允许先创建空知识库并分配成员，后续再上传资料。
+- 知识库资源权限分为 `VIEWER`、`EDITOR`、`MANAGER`：`VIEWER` 只问答，`EDITOR` 可维护文档和检索调试，`MANAGER` 可维护成员、配置和索引；owner 和 `ADMIN` 拥有完整管理权限。
 
 ## 文档模块
 
@@ -59,13 +60,20 @@
 
 核心类：`chat` 包。
 
-- `ChatService`：执行检索、Prompt 构建、模型调用、消息保存。
+- `ChatService`：执行权限校验、空库判断、检索、Prompt 构建、模型调用、消息保存。
 - `PromptBuilder`：将用户问题和召回片段组装为 Prompt。
 - `ConversationController`：查询会话详情。
+
+问答保护逻辑：
+
+- 空知识库：如果当前知识库还没有任何 `document_chunks`，返回 `EMPTY_KB` 固定提示，不调用大模型。
+- 无命中：如果知识库有资料但本次检索没有命中，返回 `NO_CONTEXT` 固定提示，不调用大模型。
+- 正常命中：只有存在检索片段时才构建 Prompt 并调用大模型，返回 `ANSWERED` 和引用来源。
 
 回答结果包括：
 
 - answer
+- answerStatus
 - conversationId
 - userMessageId
 - assistantMessageId

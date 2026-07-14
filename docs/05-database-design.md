@@ -42,7 +42,7 @@ MySQL 是主事实库，Milvus 是可重建索引。Milvus 数据丢失时，可
 | --- | --- |
 | `tenants` | 租户表，当前版本默认租户 |
 | `users` | 用户表 |
-| `roles` | 角色表，内置 `ADMIN`、`USER` |
+| `roles` | 角色表，内置 `ADMIN`、`KB_MANAGER`、`USER` |
 | `user_roles` | 用户角色关系 |
 | `knowledge_bases` | 知识库 |
 | `knowledge_base_members` | 知识库成员权限预留 |

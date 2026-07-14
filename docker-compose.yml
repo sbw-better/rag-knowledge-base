@@ -70,6 +70,16 @@ services:
     volumes:
       - milvus-data:/var/lib/milvus
 
+  attu:
+    image: zilliz/attu:v2.4
+    container_name: ragkb-attu
+    depends_on:
+      - milvus
+    environment:
+      MILVUS_URL: milvus:19530
+    ports:
+      - "8000:3000"
+
   app:
     build: .
     container_name: ragkb-app

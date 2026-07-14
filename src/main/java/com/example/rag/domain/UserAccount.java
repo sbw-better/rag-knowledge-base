@@ -36,7 +36,10 @@ public class UserAccount {
     private Instant updatedAt;
 
     /**
-     * 系统级角色，例如 ADMIN、USER。知识库级权限由 KnowledgeBaseMember 单独表达。
+     * 系统级角色，例如 ADMIN、KB_MANAGER、USER。
+     *
+     * <p>这里不保存某个知识库下的 owner/viewer/editor。知识库负责人由
+     * KnowledgeBase.ownerId 表达，知识库成员授权由 KnowledgeBaseMember 单独表达。</p>
      */
     @TableField(exist = false)
     private Set<Role> roles = new HashSet<>();

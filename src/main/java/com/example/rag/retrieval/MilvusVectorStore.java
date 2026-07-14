@@ -120,6 +120,19 @@ public class MilvusVectorStore {
                 .toBodilessEntity();
     }
 
+    public void deleteByKnowledgeBase(Long knowledgeBaseId) {
+        if (!enabled()) {
+            return;
+        }
+        Map<String, Object> body = baseBody();
+        body.put("filter", "knowledge_base_id == " + knowledgeBaseId);
+        milvusRestClient.post()
+                .uri("/v2/vectordb/entities/delete")
+                .body(body)
+                .retrieve()
+                .toBodilessEntity();
+    }
+
     public List<SearchCandidate> vectorSearch(Long tenantId, Long knowledgeBaseId, List<Double> embedding, int topK) {
         if (!enabled()) {
             return List.of();

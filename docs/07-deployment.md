@@ -29,6 +29,7 @@ npm run dev
 - `minio`：业务对象存储，用于保存上传原始文件。
 - `milvus`：Milvus standalone 向量数据库。
 - `milvus-etcd`、`milvus-minio`：Milvus standalone 依赖服务。
+- `attu`：Milvus 可视化控制台，开发排查用。
 - `app`：Spring Boot 后端镜像。
 
 启动全部服务：
@@ -43,6 +44,12 @@ docker compose up --build
 docker compose up -d mysql minio milvus
 ```
 
+启动 Milvus 可视化控制台：
+
+```powershell
+docker compose up -d attu
+```
+
 ## 端口
 
 | 服务 | 端口 |
@@ -51,6 +58,7 @@ docker compose up -d mysql minio milvus
 | 前端 Vite | 5173 |
 | MySQL | 3306 |
 | Milvus REST/gRPC | 19530 |
+| Attu Console | 8000 |
 | MinIO API | 9000 |
 | MinIO Console | 9001 |
 

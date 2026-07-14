@@ -73,7 +73,7 @@ export default function AuthPage({ mode }: { mode: "login" | "register" }) {
             <div className="mb-5">
               <h2 className="text-xl font-semibold text-slate-950">{isRegister ? "创建工作台账号" : "欢迎回来"}</h2>
               <p className="mt-1 text-sm text-slate-500">
-                {isRegister ? "注册后即可创建知识库，并开始上传业务文档。" : "登录后继续管理知识库、文档入库任务和问答会话。"}
+                {isRegister ? "注册后进入工作台，管理员授权后即可使用对应知识库。" : "登录后继续使用知识库问答，或维护你负责的知识库。"}
               </p>
             </div>
 

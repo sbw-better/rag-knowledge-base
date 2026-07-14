@@ -1,0 +1,1 @@
+INSERT IGNORE INTO roles(id, name) VALUES (3, 'KB_MANAGER');
