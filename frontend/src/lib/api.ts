@@ -15,6 +15,8 @@ import type {
   RebuildIndexResponse,
   SearchMode,
   SearchResponse,
+  TenantRequest,
+  TenantResponse,
   TaskResponse,
   UpdateUserRolesRequest,
   UploadResponse,
@@ -177,6 +179,15 @@ export const api = {
 
   updateUserRoles(id: string, payload: UpdateUserRolesRequest) {
     return apiClient.patch<unknown, AdminUserResponse>(`/admin/users/${id}/roles`, payload);
+  },
+
+  async listTenants() {
+    const data = await apiClient.get<unknown, unknown>("/admin/tenants");
+    return normalizeArray<TenantResponse>(data, "租户列表");
+  },
+
+  createTenant(payload: TenantRequest) {
+    return apiClient.post<unknown, TenantResponse>("/admin/tenants", payload);
   },
 
   async listKnowledgeBases() {

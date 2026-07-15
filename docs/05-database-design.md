@@ -40,7 +40,7 @@ MySQL 是主事实库，Milvus 是可重建索引。Milvus 数据丢失时，可
 
 | 表 | 说明 |
 | --- | --- |
-| `tenants` | 租户表，当前版本默认租户 |
+| `tenants` | 租户表，当前已支持管理员创建和查看租户 |
 | `users` | 用户表 |
 | `roles` | 角色表，内置 `ADMIN`、`KB_MANAGER`、`USER` |
 | `user_roles` | 用户角色关系 |
@@ -103,7 +103,9 @@ FULLTEXT KEY ft_chunks_content (content) WITH PARSER ngram
 
 ## 数据隔离
 
-当前表结构普遍保留 `tenant_id`。第一版默认创建一个租户，后续可扩展为多租户切换、租户管理员和租户级资源隔离。
+当前表结构普遍保留 `tenant_id`。系统已提供管理员租户列表和租户创建能力；注册用户仍进入默认 `Default` 租户。后续需要补充指定租户邀请、跨租户用户迁移、租户管理员和租户级资源配置。
+
+租户表增加 `uk_tenants_name` 唯一约束，避免出现重名租户导致后续用户邀请和资源配置歧义。
 
 知识库隔离依赖：
 

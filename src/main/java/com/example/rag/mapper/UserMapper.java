@@ -22,6 +22,9 @@ public interface UserMapper extends BaseMapper<UserAccount> {
     @Select("select * from users where tenant_id = #{tenantId} order by created_at desc")
     List<UserAccount> selectByTenantId(Long tenantId);
 
+    @Select("select count(1) from users where tenant_id = #{tenantId}")
+    long countByTenantId(Long tenantId);
+
     @Select("select r.* from roles r join user_roles ur on ur.role_id = r.id where ur.user_id = #{userId}")
     List<Role> selectRolesByUserId(Long userId);
 

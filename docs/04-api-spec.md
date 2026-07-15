@@ -115,6 +115,40 @@ Authorization: Bearer <jwt-token>
 - `USER`：基础用户，只能访问被授权的知识库。
 - 当前登录管理员不能移除自己的 `ADMIN` 角色。
 
+## 管理租户
+
+### GET /api/admin/tenants
+
+返回平台租户列表，仅 `ADMIN` 可访问。当前响应包含租户基础信息、用户数量和知识库数量。
+
+响应数据项：
+
+```json
+{
+  "id": "1900000000000000000",
+  "name": "Default",
+  "userCount": 3,
+  "knowledgeBaseCount": 2,
+  "createdAt": "2026-07-15T02:00:00Z"
+}
+```
+
+### POST /api/admin/tenants
+
+创建租户，仅 `ADMIN` 可访问。
+
+```json
+{
+  "name": "华东业务部"
+}
+```
+
+说明：
+
+- 当前版本只开放租户创建和查看。
+- 注册用户仍默认进入 `Default` 租户。
+- 用户邀请到指定租户、跨租户迁移、租户级模型配置属于后续升级。
+
 ## 知识库
 
 ### POST /api/knowledge-bases

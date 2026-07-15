@@ -27,6 +27,7 @@ desktop.ini
 .env
 .env.*
 !.env.example
+!.env.local.example
 application-local.yml
 application-*.local.yml
 

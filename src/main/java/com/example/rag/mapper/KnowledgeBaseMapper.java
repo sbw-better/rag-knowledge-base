@@ -15,4 +15,7 @@ public interface KnowledgeBaseMapper extends BaseMapper<KnowledgeBase> {
 
     @Select("select * from knowledge_bases where id = #{id} and tenant_id = #{tenantId} and deleted = 0 limit 1")
     KnowledgeBase selectByIdAndTenantIdNotDeleted(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    @Select("select count(1) from knowledge_bases where tenant_id = #{tenantId} and deleted = 0")
+    long countActiveByTenantId(Long tenantId);
 }

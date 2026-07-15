@@ -24,6 +24,21 @@
 - `knowledge_base_members` 表用于知识库成员授权。系统允许先创建空知识库并分配成员，后续再上传资料。
 - 知识库资源权限分为 `VIEWER`、`EDITOR`、`MANAGER`：`VIEWER` 只问答，`EDITOR` 可维护文档和检索调试，`MANAGER` 可维护成员、配置和索引；owner 和 `ADMIN` 拥有完整管理权限。
 
+## 租户模块
+
+核心类：`tenant` 包。
+
+- `TenantAdminController`：管理员租户接口。
+- `TenantAdminService`：校验 `ADMIN` 权限，创建租户并汇总租户用户数、知识库数。
+- `TenantMapper`：租户查询和创建。
+
+当前边界：
+
+- 管理员可以查看所有租户、创建租户。
+- 注册用户仍默认进入 `Default` 租户。
+- 暂不支持前端选择租户注册、用户跨租户迁移、租户级模型配置。
+- 后续如果开放多租户登录，需要解决同邮箱跨租户登录歧义。
+
 ## 文档模块
 
 核心类：`document`、`parser`、`storage`、`ingestion` 包。

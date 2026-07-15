@@ -8,6 +8,37 @@ $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $projectRoot
 
+function Import-LocalEnvFile {
+    param(
+        [string]$Path
+    )
+
+    if (-not (Test-Path $Path)) {
+        return
+    }
+
+    Write-Host "Loading local environment variables from $(Split-Path -Leaf $Path)..."
+    Get-Content -Encoding UTF8 -Path $Path | ForEach-Object {
+        $line = $_.Trim()
+        if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith("#")) {
+            return
+        }
+        $separatorIndex = $line.IndexOf("=")
+        if ($separatorIndex -le 0) {
+            return
+        }
+
+        $name = $line.Substring(0, $separatorIndex).Trim()
+        $value = $line.Substring($separatorIndex + 1).Trim()
+        if (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'"))) {
+            $value = $value.Substring(1, $value.Length - 2)
+        }
+        [Environment]::SetEnvironmentVariable($name, $value, "Process")
+    }
+}
+
+Import-LocalEnvFile (Join-Path $projectRoot ".env.local")
+
 New-Item -ItemType Directory -Force -Path "logs" | Out-Null
 
 Write-Host "Starting infrastructure containers..."

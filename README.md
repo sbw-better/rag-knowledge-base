@@ -40,7 +40,7 @@ npm run dev
 | Attu Milvus Console | http://localhost:8000 |
 
 开发环境 MinIO 默认账号为 `minioadmin / minioadmin`。系统账号需要通过注册接口或前端注册页创建，第一个注册用户会自动拥有 `ADMIN` 角色。
-当前系统角色分为 `ADMIN`、`KB_MANAGER`、`USER`：`ADMIN` 负责平台和用户管理，`KB_MANAGER` 可创建知识库并成为自己创建知识库的负责人，`USER` 默认只能访问被授权的知识库。
+当前系统角色分为 `ADMIN`、`KB_MANAGER`、`USER`：`ADMIN` 负责平台、用户和租户管理，`KB_MANAGER` 可创建知识库并成为自己创建知识库的负责人，`USER` 默认只能访问被授权的知识库。
 
 ## 文档入口
 
@@ -90,7 +90,8 @@ npm run dev
 ## 当前能力
 
 - 用户注册、登录、JWT 鉴权、当前用户查询。
-- `ADMIN` 可管理用户角色；`ADMIN` 和 `KB_MANAGER` 可创建知识库，创建者自动成为知识库负责人。
+- `ADMIN` 可管理用户角色和租户；`ADMIN` 和 `KB_MANAGER` 可创建知识库，创建者自动成为知识库负责人。
+- 租户列表和租户创建；当前注册仍默认进入 `Default` 租户，指定租户邀请/注册属于后续升级。
 - 知识库查询、更新、删除和成员授权；资源权限细分为 `VIEWER`、`EDITOR`、`MANAGER`。
 - 文档上传到 MinIO，并创建 DB 异步任务。
 - PDF、DOCX、TXT、Markdown、HTML 文本抽取。
@@ -105,15 +106,22 @@ npm run dev
 
 系统使用 OpenAI-compatible API。未配置 `OPENAI_API_KEY` 时，当前实现可使用本地 fallback 便于验证链路；配置后会调用真实模型。
 
-示例：
+推荐本地开发使用 `.env.local` 保存真实 Key。该文件已被 `.gitignore` 忽略，不会提交到 Git。
 
 ```powershell
-$env:OPENAI_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
-$env:OPENAI_API_KEY="replace-with-your-api-key"
-$env:OPENAI_CHAT_MODEL="qwen3.7-plus"
-$env:OPENAI_EMBEDDING_MODEL="text-embedding-v4"
-$env:OPENAI_EMBEDDING_DIMENSIONS="1536"
+cd D:\ai-projects\rag-knowledge-base
+Copy-Item .env.local.example .env.local
+notepad .env.local
+.\scripts\start-dev.ps1
 ```
+
+在 `.env.local` 中填写：
+
+```env
+OPENAI_API_KEY=replace-with-your-api-key
+```
+
+不要把真实 Key 写入 `application.yml`、`.env.example`、README 或任何会提交到 Git 的文件。
 
 更多配置说明见 [docs/08-configuration.md](docs/08-configuration.md)。
 

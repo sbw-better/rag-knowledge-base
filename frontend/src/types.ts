@@ -29,6 +29,18 @@ export type UpdateUserRolesRequest = {
   roles: string[];
 };
 
+export type TenantResponse = {
+  id: string;
+  name: string;
+  userCount: number;
+  knowledgeBaseCount: number;
+  createdAt: string;
+};
+
+export type TenantRequest = {
+  name: string;
+};
+
 export type KnowledgeBaseRequest = {
   name: string;
   description?: string;

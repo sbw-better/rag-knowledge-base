@@ -84,12 +84,34 @@ public class VectorIndexService {
 
     /**
      * 语义向量检索。真正的相似性搜索由 Milvus 执行。
+     *
+     * <p>注意：Milvus REST 响应中的 BIGINT 字段可能经过 JSON number 传输而产生精度丢失。
+     * 因此返回给业务层前，需要以 chunkId 回查 MySQL，并用 MySQL 中的事实数据修正 documentId、
+     * chunkIndex 和 content。Milvus 在这里只作为可重建索引，不作为业务事实来源。</p>
      */
     public List<SearchCandidate> vectorSearch(Long tenantId, Long knowledgeBaseId, List<Double> embedding, int topK) {
-        List<SearchCandidate> hits = milvusVectorStore.vectorSearch(tenantId, knowledgeBaseId, embedding, topK);
+        List<SearchCandidate> hits = milvusVectorStore.vectorSearch(tenantId, knowledgeBaseId, embedding, topK).stream()
+                .map(this::normalizeVectorHit)
+                .toList();
         log.debug("Vector search completed. tenantId={}, knowledgeBaseId={}, topK={}, hits={}",
                 tenantId, knowledgeBaseId, topK, hits.size());
         return hits;
+    }
+
+    private SearchCandidate normalizeVectorHit(SearchCandidate hit) {
+        DocumentChunk chunk = chunkMapper.selectChunkById(hit.chunkId());
+        if (chunk == null) {
+            log.warn("Vector hit chunk not found in MySQL. chunkId={}, documentId={}", hit.chunkId(), hit.documentId());
+            return hit;
+        }
+        return new SearchCandidate(
+                chunk.getId(),
+                chunk.getDocumentId(),
+                hit.fileName(),
+                chunk.getChunkIndex(),
+                chunk.getContent(),
+                hit.score(),
+                hit.source());
     }
 
     /**
