@@ -5,6 +5,8 @@ import type {
   AuthResponse,
   AdminUserResponse,
   ChatResponse,
+  ChatStreamError,
+  ChatStreamMeta,
   ConversationResponse,
   DocumentItem,
   DocumentResponse,
@@ -113,6 +115,51 @@ function normalizeArray<T>(value: unknown, label: string): T[] {
 
 function limitDetails(value: string) {
   return value.length > 1200 ? `${value.slice(0, 1200)}...` : value;
+}
+
+function apiUrl(path: string) {
+  const base = import.meta.env.VITE_API_BASE_URL || "/api";
+  return `${base.replace(/\/$/, "")}${path}`;
+}
+
+type ChatStreamHandlers = {
+  onMeta?: (data: ChatStreamMeta) => void;
+  onDelta?: (content: string) => void;
+  onDone?: (data: ChatResponse) => void;
+  onError?: (data: ChatStreamError) => void;
+};
+
+function parseSseBlock(block: string) {
+  let event = "message";
+  const dataLines: string[] = [];
+  for (const rawLine of block.replace(/\r/g, "").split("\n")) {
+    if (rawLine.startsWith("event:")) {
+      event = rawLine.slice("event:".length).trim();
+    }
+    if (rawLine.startsWith("data:")) {
+      dataLines.push(rawLine.slice("data:".length).trimStart());
+    }
+  }
+  return { event, data: dataLines.join("\n") };
+}
+
+function dispatchChatStreamEvent(event: string, data: string, handlers: ChatStreamHandlers) {
+  if (!data) {
+    return false;
+  }
+  const parsed = JSON.parse(data);
+  if (event === "meta") {
+    handlers.onMeta?.(parsed as ChatStreamMeta);
+  } else if (event === "delta") {
+    handlers.onDelta?.(String((parsed as { content?: string }).content ?? ""));
+  } else if (event === "done") {
+    handlers.onDone?.(parsed as ChatResponse);
+    return true;
+  } else if (event === "error") {
+    handlers.onError?.(parsed as ChatStreamError);
+    throw toApiError((parsed as ChatStreamError).message || "流式问答失败");
+  }
+  return false;
 }
 
 const apiClient = axios.create({
@@ -260,7 +307,69 @@ export const api = {
     return apiClient.post<unknown, ChatResponse>("/chat", payload);
   },
 
+  async streamChat(
+    payload: { knowledgeBaseId: string; conversationId?: string; question: string; topK?: number },
+    handlers: ChatStreamHandlers,
+    signal?: AbortSignal
+  ) {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream"
+    };
+    const token = getToken();
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    const response = await fetch(apiUrl("/chat/stream"), {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+      signal
+    });
+    if (response.status === 401) {
+      clearAuth();
+      if (!window.location.pathname.startsWith("/login")) {
+        window.location.href = "/login";
+      }
+      throw toApiError("登录已过期，请重新登录。", 401);
+    }
+    if (!response.ok || !response.body) {
+      const errorText = await response.text().catch(() => response.statusText);
+      throw toApiError(errorText || response.statusText, response.status);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      let separator = buffer.match(/\r?\n\r?\n/);
+      while (separator?.index !== undefined) {
+        const block = buffer.slice(0, separator.index);
+        buffer = buffer.slice(separator.index + separator[0].length);
+        const parsed = parseSseBlock(block);
+        if (dispatchChatStreamEvent(parsed.event, parsed.data, handlers)) {
+          await reader.cancel();
+          return;
+        }
+        separator = buffer.match(/\r?\n\r?\n/);
+      }
+    }
+    if (buffer.trim()) {
+      const parsed = parseSseBlock(buffer);
+      dispatchChatStreamEvent(parsed.event, parsed.data, handlers);
+    }
+  },
+
   getConversation(id: string) {
     return apiClient.get<unknown, ConversationResponse>(`/conversations/${id}`);
+  },
+
+  getLatestConversation(knowledgeBaseId: string) {
+    return apiClient.get<unknown, ConversationResponse | null>("/conversations/latest", { params: { knowledgeBaseId } });
   }
 };

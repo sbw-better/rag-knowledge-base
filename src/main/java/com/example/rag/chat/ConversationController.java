@@ -5,6 +5,7 @@ import com.example.rag.chat.dto.ConversationResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 
@@ -22,6 +23,17 @@ public class ConversationController {
     }
 
     private final ChatService chatService;
+
+    /**
+     * 查询当前用户在某个知识库下最近一次会话。
+     *
+     * <p>用于前端刷新页面、重新进入问答页后恢复最近问答内容；如果还没有问答历史，
+     * data 返回 null。</p>
+     */
+    @GetMapping("/latest")
+    ApiResponse<ConversationResponse> latest(@RequestParam Long knowledgeBaseId) {
+        return ApiResponse.ok(chatService.getLatestConversation(knowledgeBaseId));
+    }
 
     /**
      * 查询指定会话详情。

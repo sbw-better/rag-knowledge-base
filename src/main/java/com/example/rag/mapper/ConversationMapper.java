@@ -10,4 +10,17 @@ import org.apache.ibatis.annotations.Select;
 public interface ConversationMapper extends BaseMapper<Conversation> {
     @Select("select * from conversations where id = #{id} and tenant_id = #{tenantId} and user_id = #{userId} limit 1")
     Conversation selectByIdAndTenantIdAndUserId(@Param("id") Long id, @Param("tenantId") Long tenantId, @Param("userId") Long userId);
+
+    @Select("""
+            select *
+            from conversations
+            where tenant_id = #{tenantId}
+              and user_id = #{userId}
+              and knowledge_base_id = #{knowledgeBaseId}
+            order by updated_at desc, created_at desc
+            limit 1
+            """)
+    Conversation selectLatestByKnowledgeBaseId(@Param("tenantId") Long tenantId,
+                                               @Param("userId") Long userId,
+                                               @Param("knowledgeBaseId") Long knowledgeBaseId);
 }

@@ -7,6 +7,7 @@ import com.example.rag.chat.dto.ChatRequest;
 import com.example.rag.chat.dto.ChatResponse;
 import com.example.rag.domain.Conversation;
 import com.example.rag.domain.KnowledgeBase;
+import com.example.rag.domain.MessageCitation;
 import com.example.rag.domain.MessageEntity;
 import com.example.rag.domain.UserAccount;
 import com.example.rag.knowledge.KnowledgeBaseService;
@@ -16,6 +17,7 @@ import com.example.rag.mapper.DocumentMapper;
 import com.example.rag.mapper.MessageCitationMapper;
 import com.example.rag.mapper.MessageMapper;
 import com.example.rag.model.LlmClient;
+import com.example.rag.retrieval.SearchCandidate;
 import com.example.rag.retrieval.SearchService;
 import com.example.rag.retrieval.dto.SearchMode;
 import org.junit.jupiter.api.AfterEach;
@@ -119,5 +121,26 @@ class ChatServiceTest {
         assertThat(response.answer()).contains("没有检索到与问题相关的资料");
         assertThat(response.citations()).isEmpty();
         verify(llmClient, never()).chat(any());
+    }
+
+    @Test
+    void clearsCitationsWhenModelSaysContextDoesNotCoverQuestion() {
+        SearchCandidate irrelevantHit = new SearchCandidate(
+                300L,
+                400L,
+                "health-service-guide.md",
+                1,
+                "体检预约和报告解读相关说明",
+                0.12,
+                "VECTOR");
+        when(chunkMapper.countByTenantIdAndKnowledgeBaseId(1L, 200L)).thenReturn(3);
+        when(searchService.searchInternal(eq(kb), eq("我叫啥"), eq(SearchMode.HYBRID), eq(5))).thenReturn(List.of(irrelevantHit));
+        when(llmClient.chat(any())).thenReturn("当前资料没有覆盖您的姓名信息。建议您补充相关资料或联系知识库负责人。");
+
+        ChatResponse response = chatService.chat(new ChatRequest("200", null, "我叫啥", null));
+
+        assertThat(response.answerStatus()).isEqualTo(ChatAnswerStatus.NO_CONTEXT);
+        assertThat(response.citations()).isEmpty();
+        verify(citationMapper, never()).insert(ArgumentMatchers.any(MessageCitation.class));
     }
 }

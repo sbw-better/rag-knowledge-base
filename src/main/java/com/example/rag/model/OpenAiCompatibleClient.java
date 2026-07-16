@@ -7,17 +7,26 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.security.MessageDigest;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * OpenAI-compatible 模型客户端。
@@ -33,6 +42,9 @@ public class OpenAiCompatibleClient implements EmbeddingClient, LlmClient {
     private final RestClient openAiRestClient;
     private final AppProperties properties;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final HttpClient streamingHttpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(15))
+            .build();
 
     public OpenAiCompatibleClient(RestClient openAiRestClient, AppProperties properties) {
         this.openAiRestClient = openAiRestClient;
@@ -114,6 +126,76 @@ public class OpenAiCompatibleClient implements EmbeddingClient, LlmClient {
                     + "。请检查 API Key、模型名、余额和接口地址。");
         } catch (Exception ex) {
             throw new BadRequestException("Chat 调用失败：" + ex.getMessage());
+        }
+    }
+
+    @Override
+    public void chatStream(List<Map<String, String>> messages, Consumer<String> onDelta) {
+        if (blank(properties.model().apiKey())) {
+            log.debug("Using chat stream fallback because OPENAI_API_KEY is empty.");
+            onDelta.accept("OPENAI_API_KEY is not configured. Retrieval is working; configure a model key for final LLM answers.");
+            return;
+        }
+        Map<String, Object> body = new HashMap<>();
+        body.put("model", properties.model().chatModel());
+        body.put("messages", messages);
+        body.put("temperature", 0.2);
+        body.put("stream", true);
+        try {
+            HttpRequest request = HttpRequest.newBuilder(chatCompletionsUri())
+                    .timeout(Duration.ofMinutes(3))
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.model().apiKey())
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
+                    .build();
+            HttpResponse<Stream<String>> response = streamingHttpClient.send(request, HttpResponse.BodyHandlers.ofLines());
+            try (Stream<String> lines = response.body()) {
+                if (response.statusCode() / 100 != 2) {
+                    String responseBody = lines.limit(20).collect(Collectors.joining("\n"));
+                    log.warn("Chat stream request rejected. baseUrl={}, model={}, status={}",
+                            properties.model().baseUrl(), properties.model().chatModel(), response.statusCode());
+                    throw new BadRequestException("Chat 流式调用失败：模型服务返回 HTTP "
+                            + response.statusCode()
+                            + "。请检查 API Key、模型名、余额和接口地址。"
+                            + (responseBody.isBlank() ? "" : " " + responseBody));
+                }
+                lines.forEach(line -> handleStreamLine(line, onDelta));
+            }
+            log.info("Chat stream request succeeded. model={}, messages={}", properties.model().chatModel(), messages.size());
+        } catch (BadRequestException ex) {
+            throw ex;
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new BadRequestException("Chat 流式调用失败：请求被中断。");
+        } catch (Exception ex) {
+            throw new BadRequestException("Chat 流式调用失败：" + ex.getMessage());
+        }
+    }
+
+    private URI chatCompletionsUri() {
+        String baseUrl = properties.model().baseUrl();
+        while (baseUrl.endsWith("/")) {
+            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+        }
+        return URI.create(baseUrl + "/chat/completions");
+    }
+
+    private void handleStreamLine(String line, Consumer<String> onDelta) {
+        if (line == null || line.isBlank() || line.startsWith(":") || !line.startsWith("data:")) {
+            return;
+        }
+        String data = line.substring("data:".length()).trim();
+        if ("[DONE]".equals(data)) {
+            return;
+        }
+        try {
+            JsonNode choice = objectMapper.readTree(data).path("choices").get(0);
+            String delta = choice.path("delta").path("content").asText("");
+            if (!delta.isEmpty()) {
+                onDelta.accept(delta);
+            }
+        } catch (Exception ex) {
+            log.debug("Ignored malformed chat stream line. line={}", line);
         }
     }
 

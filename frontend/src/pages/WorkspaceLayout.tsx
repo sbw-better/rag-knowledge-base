@@ -179,25 +179,25 @@ function AccountMenu({ user, onLogout }: { user: UserResponse | null; onLogout: 
   }, []);
 
   return (
-    <div ref={menuRef} className="relative">
+    <div ref={menuRef} className="relative max-w-[55vw] sm:max-w-none">
       <button
         type="button"
-        className="flex h-10 items-center gap-3 rounded-lg border border-slate-200 bg-white px-2.5 text-left text-sm shadow-sm shadow-slate-900/5 transition hover:border-slate-300 hover:bg-slate-50"
+        className="flex h-10 max-w-[13.5rem] items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 text-left text-sm shadow-sm shadow-slate-900/5 transition hover:border-slate-300 hover:bg-slate-50 sm:max-w-[16rem]"
         onClick={() => setOpen((current) => !current)}
       >
         <span className="grid h-7 w-7 place-items-center rounded-lg bg-emerald-600 text-xs font-semibold text-white">{initial}</span>
-        <span className="hidden min-w-0 sm:block">
-          <span className="block max-w-32 truncate font-medium text-slate-800">{displayName}</span>
-          <span className="block max-w-32 truncate text-xs text-slate-500">{email}</span>
+        <span className="hidden min-w-0 flex-1 sm:block">
+          <span className="block truncate font-medium text-slate-800">{displayName}</span>
+          <span className="block truncate text-xs text-slate-500">{email}</span>
         </span>
-        <ChevronDown className="h-4 w-4 text-slate-400" />
+        <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
       </button>
 
       {open ? (
-        <div className="absolute right-0 mt-2 w-64 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg shadow-slate-900/10">
+        <div className="absolute right-0 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg shadow-slate-900/10">
           <div className="border-b border-slate-100 px-4 py-3">
-            <p className="line-clamp-1 text-sm font-medium text-slate-900">{displayName}</p>
-            <p className="mt-0.5 break-all text-xs text-slate-500">{email}</p>
+            <p className="break-words text-sm font-medium leading-5 text-slate-900">{displayName}</p>
+            <p className="mt-1 break-all text-xs leading-5 text-slate-500">{email}</p>
           </div>
           <div className="p-2">
             <Button className="w-full justify-start" variant="ghost" onClick={onLogout}>

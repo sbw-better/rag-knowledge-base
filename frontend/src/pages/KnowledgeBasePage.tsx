@@ -21,7 +21,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Badge, Button, EmptyState, ErrorMessage, Field, Input, Label, PageHeader, Panel, PanelHeader, Textarea } from "../components/ui";
 import { api } from "../lib/api";
 import { cn, formatBytes, formatDateTime, shortId } from "../lib/utils";
-import type { Citation, ChatResponse, DocumentItem, DocumentResponse, KnowledgeBaseMemberRequest, SearchHit, SearchMode, TaskResponse } from "../types";
+import type { Citation, ChatResponse, DocumentItem, DocumentResponse, KnowledgeBaseMemberRequest, MessageItem, SearchHit, SearchMode, TaskResponse } from "../types";
 
 type Tab = "documents" | "search" | "chat" | "members" | "config" | "operations";
 type RecentUpload = {
@@ -29,10 +29,12 @@ type RecentUpload = {
   task: TaskResponse;
 };
 type ChatItem = {
+  id?: string;
   role: "user" | "assistant";
   content: string;
   answerStatus?: ChatResponse["answerStatus"];
   citations?: Citation[];
+  streaming?: boolean;
 };
 
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
@@ -239,7 +241,7 @@ export default function KnowledgeBasePage() {
       <ErrorMessage error={kbQuery.error} />
       {activeTab === "documents" && canManageDocuments ? <DocumentsPanel kbId={kbId} /> : null}
       {activeTab === "search" && canManageDocuments ? <SearchPanel kbId={kbId} defaultTopK={kbQuery.data?.topK ?? 5} /> : null}
-      {activeTab === "chat" ? <ChatPanel kbId={kbId} defaultTopK={kbQuery.data?.topK ?? 5} manageable={manageable} /> : null}
+      {activeTab === "chat" ? <ChatPanel kbId={kbId} defaultTopK={kbQuery.data?.topK ?? 5} /> : null}
       {activeTab === "members" && kbQuery.data && canManageMembers ? <MembersPanel kbId={kbQuery.data.id} /> : null}
       {activeTab === "config" && kbQuery.data && canManageConfig ? <KnowledgeBaseConfigPanel kb={kbQuery.data} /> : null}
       {activeTab === "operations" && kbQuery.data && canUseOperations ? <OperationsPanel kb={kbQuery.data} /> : null}
@@ -517,16 +519,161 @@ function SearchHitCard({ hit }: { hit: SearchHit }) {
   );
 }
 
-function ChatPanel({ kbId, defaultTopK, manageable }: { kbId: string; defaultTopK: number; manageable: boolean }) {
-  const [conversationId, setConversationId] = useState<string | undefined>();
+function ChatPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number }) {
+  const queryClient = useQueryClient();
+  const streamAbortRef = useRef<AbortController | null>(null);
+  const [conversationId, setConversationId] = useState<string | undefined>(() => readStoredConversationId(kbId));
+  const [skipRestore, setSkipRestore] = useState(false);
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<ChatItem[]>([]);
+  const [selectedAssistantId, setSelectedAssistantId] = useState<string | undefined>();
+
+  const conversationQuery = useQuery({
+    queryKey: ["chat-conversation", kbId, conversationId ?? "latest"],
+    queryFn: () => (conversationId ? api.getConversation(conversationId) : api.getLatestConversation(kbId)),
+    enabled: !skipRestore,
+    retry: false
+  });
+
+  useEffect(() => {
+    setConversationId(readStoredConversationId(kbId));
+    setMessages([]);
+    setSelectedAssistantId(undefined);
+    setQuestion("");
+    setSkipRestore(false);
+  }, [kbId]);
+
+  useEffect(() => {
+    if (!conversationQuery.isSuccess) {
+      return;
+    }
+    const conversation = conversationQuery.data;
+    if (!conversation) {
+      if (!conversationId) {
+        setMessages([]);
+      }
+      return;
+    }
+    setConversationId(conversation.id);
+    storeConversationId(kbId, conversation.id);
+    const restoredMessages = conversation.messages.map(toChatItem);
+    setMessages(restoredMessages);
+    setSelectedAssistantId(findLatestAssistantId(restoredMessages));
+  }, [conversationQuery.data, conversationQuery.isSuccess, conversationId, kbId]);
+
+  useEffect(() => {
+    if (!conversationQuery.isError || !conversationId) {
+      return;
+    }
+    removeStoredConversationId(kbId);
+    setConversationId(undefined);
+    setMessages([]);
+    setSelectedAssistantId(undefined);
+  }, [conversationId, conversationQuery.isError, kbId]);
 
   const chatMutation = useMutation({
-    mutationFn: () => api.chat({ knowledgeBaseId: kbId, conversationId, question, topK: defaultTopK }),
-    onSuccess: (data: ChatResponse) => {
-      setConversationId(data.conversationId);
-      setMessages((current) => [...current, { role: "assistant", content: data.answer, answerStatus: data.answerStatus, citations: data.citations }]);
+    mutationFn: async (currentQuestion: string) => {
+      const assistantTempId = `stream-${Date.now()}`;
+      const controller = new AbortController();
+      let doneReceived = false;
+      let streamStarted = false;
+      streamAbortRef.current = controller;
+      setMessages((current) => [...current, { id: assistantTempId, role: "assistant", content: "", citations: [], streaming: true }]);
+      try {
+        await api.streamChat(
+          { knowledgeBaseId: kbId, conversationId, question: currentQuestion, topK: defaultTopK },
+          {
+            onMeta: (data) => {
+              streamStarted = true;
+              setConversationId(data.conversationId);
+              storeConversationId(kbId, data.conversationId);
+            },
+            onDelta: (content) => {
+              if (!content) {
+                return;
+              }
+              setMessages((current) =>
+                current.map((item) => item.id === assistantTempId ? { ...item, content: `${item.content}${content}` } : item)
+              );
+            },
+            onDone: (data: ChatResponse) => {
+              doneReceived = true;
+              setConversationId(data.conversationId);
+              storeConversationId(kbId, data.conversationId);
+              setSelectedAssistantId(data.assistantMessageId);
+              setMessages((current) =>
+                current.map((item) =>
+                  item.id === assistantTempId
+                    ? {
+                        id: data.assistantMessageId,
+                        role: "assistant",
+                        content: data.answer,
+                        answerStatus: data.answerStatus,
+                        citations: data.citations,
+                        streaming: false
+                      }
+                    : item
+                )
+              );
+            }
+          },
+          controller.signal
+        );
+        if (!doneReceived) {
+          throw new Error("流式回答没有正常结束，请稍后重试。");
+        }
+      } catch (error) {
+        let finalError = error;
+        if (!streamStarted && !controller.signal.aborted) {
+          try {
+            let data: ChatResponse;
+            try {
+              data = await api.chat({ knowledgeBaseId: kbId, conversationId, question: currentQuestion, topK: defaultTopK });
+            } catch (fallbackError) {
+              if (conversationId && isStaleConversationError(fallbackError)) {
+                removeStoredConversationId(kbId);
+                setConversationId(undefined);
+                data = await api.chat({ knowledgeBaseId: kbId, question: currentQuestion, topK: defaultTopK });
+              } else {
+                throw fallbackError;
+              }
+            }
+            setConversationId(data.conversationId);
+            storeConversationId(kbId, data.conversationId);
+            setSelectedAssistantId(data.assistantMessageId);
+            setMessages((current) =>
+              current.map((item) =>
+                item.id === assistantTempId
+                  ? {
+                      id: data.assistantMessageId,
+                      role: "assistant",
+                      content: data.answer,
+                      answerStatus: data.answerStatus,
+                      citations: data.citations,
+                      streaming: false
+                    }
+                  : item
+              )
+            );
+            return;
+          } catch (fallbackError) {
+            finalError = fallbackError;
+          }
+        }
+        setMessages((current) =>
+          current.map((item) =>
+            item.id === assistantTempId
+              ? { ...item, content: item.content || "回答生成失败，请稍后重试。", streaming: false }
+            : item
+          )
+        );
+        throw finalError;
+      } finally {
+        streamAbortRef.current = null;
+        setSkipRestore(false);
+      }
+    },
+    onSuccess: () => {
       setQuestion("");
     }
   });
@@ -537,76 +684,104 @@ function ChatPanel({ kbId, defaultTopK, manageable }: { kbId: string; defaultTop
     if (!trimmed) {
       return;
     }
+    setQuestion("");
+    setSkipRestore(true);
     setMessages((current) => [...current, { role: "user", content: trimmed }]);
-    chatMutation.mutate();
+    chatMutation.mutate(trimmed);
   }
 
-  const citations = useMemo(() => messages.flatMap((item) => item.citations ?? []), [messages]);
-  const latestAssistant = useMemo(() => [...messages].reverse().find((item) => item.role === "assistant"), [messages]);
+  function resetConversation() {
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
+    removeStoredConversationId(kbId);
+    setConversationId(undefined);
+    setMessages([]);
+    setSelectedAssistantId(undefined);
+    setQuestion("");
+    setSkipRestore(true);
+    chatMutation.reset();
+    queryClient.removeQueries({ queryKey: ["chat-conversation", kbId] });
+  }
+
+  const selectedAssistant = useMemo(
+    () => messages.find((item) => item.role === "assistant" && item.id === selectedAssistantId)
+      ?? [...messages].reverse().find((item) => item.role === "assistant"),
+    [messages, selectedAssistantId]
+  );
+  const selectedCitations = selectedAssistant?.citations ?? [];
 
   function citationEmptyState() {
-    if (!latestAssistant) {
-      return { title: "暂无引用", description: "完成一次问答后会显示来源片段。" };
+    if (!selectedAssistant) {
+      return { title: "暂无引用", description: "选择一条回答后，这里会显示对应的来源片段。" };
     }
-    if (latestAssistant.answerStatus === "EMPTY_KB") {
+    if (selectedAssistant.answerStatus === "EMPTY_KB") {
       return { title: "知识库暂无资料", description: "当前知识库没有可引用的文档片段，请联系负责人上传并完成入库。" };
     }
-    if (latestAssistant.answerStatus === "NO_CONTEXT") {
-      return { title: "本次未命中资料", description: "当前问题没有检索到可引用片段，可以换个问法或补充相关文档。" };
+    if (selectedAssistant.answerStatus === "NO_CONTEXT") {
+      return { title: "这条回答未命中资料", description: "该问题没有检索到可引用片段，可以换个问法或补充相关文档。" };
     }
-    return { title: "暂无引用", description: "本次回答没有返回引用来源。" };
+    return { title: "这条回答没有引用来源", description: "当前选中的回答没有返回可展示的来源片段。" };
   }
 
   const emptyCitationState = citationEmptyState();
+  const isRestoringConversation = conversationQuery.isLoading && !skipRestore;
+  const chatDescription = conversationId
+    ? "本轮问答已开启，后续问题会延续当前上下文。"
+    : "向当前知识库提问，回答会附带可核验的来源。";
 
   return (
     <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
       <Panel className="min-w-0 min-h-[620px]">
         <PanelHeader
-          title="RAG 问答"
-          description={
-            conversationId
-              ? manageable
-                ? `会话 ${shortId(conversationId)} · 使用当前知识库默认召回参数`
-                : `会话 ${shortId(conversationId)}`
-              : "面向使用者的问答入口。系统会自动检索当前知识库，并返回可核验的引用来源。"
-          }
+          title="知识库问答"
+          description={chatDescription}
+          actions={(conversationId || messages.length > 0) ? (
+            <Button type="button" variant="secondary" size="sm" onClick={resetConversation}>
+              <MessageSquare className="h-4 w-4" />
+              新建会话
+            </Button>
+          ) : null}
         />
         <div className="flex h-[min(500px,calc(100vh-340px))] min-h-[420px] flex-col">
           <div className="flex-1 space-y-4 overflow-y-auto p-5">
-            {messages.length === 0 ? <EmptyState title="开始提问" description="问题会先检索当前知识库，再由大模型基于上下文回答。" /> : null}
+            {isRestoringConversation ? <EmptyState title="正在恢复会话" description="正在加载你在当前知识库里的最近一次问答。" /> : null}
+            {!isRestoringConversation && messages.length === 0 ? <EmptyState title="开始提问" description="可以直接描述你的问题，系统会从当前知识库中查找相关资料后回答。" /> : null}
             {messages.map((message, index) => (
-              <div key={`${message.role}-${index}`} className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}>
-                <div
+              <div key={message.id ?? `${message.role}-${index}`} className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}>
+                <button
+                  type="button"
+                  disabled={message.role !== "assistant"}
+                  onClick={() => message.role === "assistant" && message.id ? setSelectedAssistantId(message.id) : undefined}
                   className={cn(
-                    "max-w-[min(760px,90%)] rounded-lg px-4 py-3 text-sm leading-6",
-                    message.role === "user" ? "bg-emerald-600 text-white" : "border border-slate-200 bg-white text-slate-800"
+                    "max-w-[min(760px,90%)] rounded-lg px-4 py-3 text-left text-sm leading-6 transition",
+                    message.role === "user" && "cursor-default bg-emerald-600 text-white",
+                    message.role === "assistant" && "border bg-white text-slate-800 hover:border-cyan-200 hover:bg-cyan-50/20",
+                    message.role === "assistant" && message.id === selectedAssistant?.id
+                      ? "border-cyan-300 shadow-sm shadow-cyan-900/10"
+                      : message.role === "assistant" && "border-slate-200"
                   )}
                 >
                   {message.role === "assistant" ? (
                     <div className="mb-2 flex flex-wrap items-center gap-2 text-xs font-medium text-emerald-700">
                       <span className="inline-flex items-center gap-1">
                         <Bot className="h-3.5 w-3.5" />
-                        Assistant
+                        知识库助手
                       </span>
                       {message.answerStatus === "EMPTY_KB" ? <Badge tone="amber">知识库暂无资料</Badge> : null}
                       {message.answerStatus === "NO_CONTEXT" ? <Badge tone="slate">未命中资料</Badge> : null}
+                      {message.streaming ? <Badge tone="cyan">生成中</Badge> : null}
                     </div>
                   ) : null}
-                    <p className="whitespace-pre-wrap break-words">{message.content}</p>
+                    <p className="whitespace-pre-wrap break-words">{message.content || (message.streaming ? "正在检索并生成回答..." : "")}</p>
                   {message.citations?.length ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {message.citations.map((citation, citationIndex) => (
-                        <Badge key={`${citation.chunkId}-${citationIndex}`} tone="cyan">
-                          引用 {citationIndex + 1}: {citation.fileName}
-                        </Badge>
-                      ))}
-                    </div>
+                    <span className="mt-3 inline-flex max-w-full items-center gap-1 rounded-lg border border-cyan-100 bg-cyan-50 px-3 py-1.5 text-xs font-medium text-cyan-800">
+                      <span>查看 {message.citations.length} 个来源</span>
+                      <span className="min-w-0 truncate text-cyan-700">· {summarizeCitationFiles(message.citations)}</span>
+                    </span>
                   ) : null}
-                </div>
+                </button>
               </div>
             ))}
-            {chatMutation.isPending ? <div className="text-sm text-slate-500">正在检索并生成回答...</div> : null}
           </div>
           <form onSubmit={submit} className="border-t border-slate-100 p-4">
             <ErrorMessage error={chatMutation.error} />
@@ -620,7 +795,7 @@ function ChatPanel({ kbId, defaultTopK, manageable }: { kbId: string; defaultTop
               <Button
                 className="h-12 min-w-24 shrink-0 whitespace-nowrap px-5"
                 type="submit"
-                disabled={chatMutation.isPending || !question.trim()}
+                disabled={chatMutation.isPending || isRestoringConversation || !question.trim()}
               >
                 <Send className="h-4 w-4" />
                 发送
@@ -631,13 +806,19 @@ function ChatPanel({ kbId, defaultTopK, manageable }: { kbId: string; defaultTop
       </Panel>
 
       <Panel className="h-fit min-w-0">
-        <PanelHeader title="引用来源" description="最近回答中命中的文档片段。" />
+        <PanelHeader title="回答来源" description="显示当前选中回答引用的文档片段。" />
         <div className="space-y-3 p-5">
-          {citations.length === 0 ? <EmptyState title={emptyCitationState.title} description={emptyCitationState.description} /> : null}
-          {citations.map((citation, index) => (
+          {selectedAssistant ? (
+            <div className="rounded-lg border border-cyan-100 bg-cyan-50/60 px-3 py-2 text-xs leading-5 text-cyan-800">
+              当前查看：{selectedAssistant.content ? selectedAssistant.content.slice(0, 46) : "正在生成的回答"}
+              {selectedAssistant.content.length > 46 ? "..." : ""}
+            </div>
+          ) : null}
+          {selectedCitations.length === 0 ? <EmptyState title={emptyCitationState.title} description={emptyCitationState.description} /> : null}
+          {selectedCitations.map((citation, index) => (
             <details key={`${citation.chunkId}-${index}`} className="rounded-lg border border-slate-200 bg-white p-3">
               <summary className="cursor-pointer text-sm font-medium text-slate-800">
-                引用 {index + 1} · {citation.fileName}
+                来源 {index + 1} · {citation.fileName}
               </summary>
               <div className="mt-3 space-y-2 text-xs text-slate-500">
                 <div>Chunk #{citation.chunkIndex} · Score {citation.score.toFixed(4)}</div>
@@ -649,6 +830,51 @@ function ChatPanel({ kbId, defaultTopK, manageable }: { kbId: string; defaultTop
       </Panel>
     </div>
   );
+}
+
+function chatConversationStorageKey(kbId: string) {
+  return `ragkb.chat.conversation.${kbId}`;
+}
+
+function readStoredConversationId(kbId: string) {
+  return window.localStorage.getItem(chatConversationStorageKey(kbId)) ?? undefined;
+}
+
+function storeConversationId(kbId: string, conversationId: string) {
+  window.localStorage.setItem(chatConversationStorageKey(kbId), conversationId);
+}
+
+function removeStoredConversationId(kbId: string) {
+  window.localStorage.removeItem(chatConversationStorageKey(kbId));
+}
+
+function isStaleConversationError(error: unknown) {
+  const status = typeof error === "object" && error && "status" in error ? (error as { status?: number }).status : undefined;
+  return status === 403 || status === 404;
+}
+
+function findLatestAssistantId(messages: ChatItem[]) {
+  return [...messages].reverse().find((item) => item.role === "assistant")?.id;
+}
+
+function toChatItem(message: MessageItem): ChatItem {
+  return {
+    id: message.id,
+    role: message.role === "USER" ? "user" : "assistant",
+    content: message.content,
+    citations: message.citations
+  };
+}
+
+function summarizeCitationFiles(citations: Citation[]) {
+  const files = Array.from(new Set(citations.map((citation) => citation.fileName).filter(Boolean)));
+  if (files.length === 0) {
+    return "查看来源";
+  }
+  if (files.length <= 2) {
+    return files.join("、");
+  }
+  return `${files.slice(0, 2).join("、")} 等 ${files.length} 个文件`;
 }
 
 function MembersPanel({ kbId }: { kbId: string }) {

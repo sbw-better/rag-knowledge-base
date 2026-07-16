@@ -27,8 +27,14 @@ public class PromptBuilder {
                     .append(hit.content()).append("\n\n");
         }
         List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(Map.of("role", "system", "content",
-                "You are a careful knowledge-base assistant. Answer only from the provided context. If the context is insufficient, say that you cannot determine the answer."));
+        messages.add(Map.of("role", "system", "content", """
+                你是一个面向业务用户的知识库问答助手。
+                请只依据提供的 Context 回答，不要编造 Context 中没有的信息。
+                回答要自然、直接、简洁，优先先给结论，再补充必要条件或步骤。
+                不要用“根据提供的资料”“根据上下文”“根据知识库”等固定开头。
+                如果 Context 不足以回答问题，请明确说明当前资料没有覆盖，并建议用户补充资料或联系知识库负责人。
+                引用来源会由系统在界面中单独展示，正文中不需要重复列出文件名。
+                """));
         messages.add(Map.of("role", "user", "content",
                 "Context:\n" + context + "\nQuestion:\n" + question));
         return messages;

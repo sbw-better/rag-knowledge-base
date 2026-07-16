@@ -15,6 +15,7 @@ import org.springframework.security.config.annotation.web.configurers.AuthorizeH
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+import jakarta.servlet.DispatcherType;
 import java.util.Arrays;
 
 /**
@@ -70,6 +71,9 @@ public class SecurityConfig {
     private void configureAuthorization(
             AuthorizeHttpRequestsConfigurer<HttpSecurity>.AuthorizationManagerRequestMatcherRegistry auth,
             boolean prod) {
+        // SseEmitter / async MVC 在响应完成时会触发 ASYNC 分发；异常页会触发 ERROR 分发。
+        // 这些分发不是新的业务入口，真正的 /api/chat/stream 请求已经在 REQUEST 阶段完成鉴权。
+        auth.dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll();
         auth.requestMatchers("/api/auth/register", "/api/auth/login", "/actuator/health").permitAll();
         if (!prod) {
             auth.requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/actuator/info").permitAll();

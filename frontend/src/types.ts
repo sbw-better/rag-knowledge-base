@@ -152,6 +152,16 @@ export type ChatResponse = {
   citations: Citation[];
 };
 
+export type ChatStreamMeta = {
+  conversationId: string;
+  userMessageId: string;
+  answerStatus?: ChatResponse["answerStatus"];
+};
+
+export type ChatStreamError = {
+  message: string;
+};
+
 export type MessageItem = {
   id: string;
   role: string;
