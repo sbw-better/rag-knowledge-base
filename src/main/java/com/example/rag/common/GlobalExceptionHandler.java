@@ -57,7 +57,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     ResponseEntity<ApiResponse<Void>> internal(Exception ex, HttpServletRequest request) {
         String requestId = UUID.randomUUID().toString();
-        log.error("Unhandled exception. requestId={}, method={}, uri={}",
+        log.error("未处理异常。requestId={}, method={}, uri={}",
                 requestId,
                 request.getMethod(),
                 request.getRequestURI(),

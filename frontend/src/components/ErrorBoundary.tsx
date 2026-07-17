@@ -25,7 +25,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("Unhandled frontend error", error, info);
+    console.error("前端出现未处理异常", error, info);
   }
 
   render() {

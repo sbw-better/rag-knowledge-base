@@ -30,7 +30,7 @@ public class DocumentParserService {
             parser.parse(inputStream, handler, metadata, new ParseContext());
             return clean(handler.toString());
         } catch (Exception ex) {
-            throw new BadRequestException("Failed to parse document: " + ex.getMessage());
+            throw new BadRequestException("文档解析失败：" + ex.getMessage());
         }
     }
 

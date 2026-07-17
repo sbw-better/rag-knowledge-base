@@ -8,7 +8,7 @@ import java.util.List;
  * 管理员更新用户系统角色请求。
  */
 public record UpdateUserRolesRequest(
-        @NotEmpty(message = "roles is required")
+        @NotEmpty(message = "roles 不能为空")
         List<String> roles
 ) {
 }

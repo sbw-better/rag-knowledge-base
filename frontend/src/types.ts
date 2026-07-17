@@ -47,6 +47,7 @@ export type KnowledgeBaseRequest = {
   chunkSize?: number;
   chunkOverlap?: number;
   topK?: number;
+  minScore?: number;
 };
 
 export type KnowledgeBaseResponse = {
@@ -56,6 +57,7 @@ export type KnowledgeBaseResponse = {
   chunkSize: number;
   chunkOverlap: number;
   topK: number;
+  minScore: number;
   createdAt: string;
   manageable: boolean;
   permission: string;
@@ -118,6 +120,15 @@ export type DocumentItem = {
   task: TaskResponse | null;
 };
 
+export type DocumentChunkResponse = {
+  id: string;
+  documentId: string;
+  chunkIndex: number;
+  content: string;
+  metadataJson: string | null;
+  createdAt: string;
+};
+
 export type SearchMode = "VECTOR" | "KEYWORD" | "HYBRID";
 
 export type SearchHit = {
@@ -174,4 +185,11 @@ export type ConversationResponse = {
   id: string;
   title: string;
   messages: MessageItem[];
+};
+
+export type ConversationSummaryResponse = {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
 };

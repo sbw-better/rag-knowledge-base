@@ -15,6 +15,7 @@ public record KnowledgeBaseResponse(
         int chunkSize,
         int chunkOverlap,
         int topK,
+        double minScore,
         Instant createdAt,
         boolean manageable,
         String permission,

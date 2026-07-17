@@ -80,7 +80,7 @@ public class IngestionWorker {
         }
         List<RagTask> tasks = taskMapper.selectRunnable(TaskStatus.PENDING, properties.ingestion().batchSize());
         if (!tasks.isEmpty()) {
-            log.info("Ingestion worker picked tasks. count={}", tasks.size());
+            log.info("文档入库 Worker 拉取到待处理任务。count={}", tasks.size());
         }
         for (RagTask task : tasks) {
             transactionTemplate.executeWithoutResult(status -> process(task.getId()));
@@ -96,18 +96,18 @@ public class IngestionWorker {
     void process(Long taskId) {
         RagTask task = taskMapper.selectById(taskId);
         if (task == null) {
-            throw new BadRequestException("Task not found");
+            throw new BadRequestException("任务不存在");
         }
         DocumentEntity document = documentMapper.selectById(task.getDocumentId());
         if (document == null) {
-            throw new BadRequestException("Document not found");
+            throw new BadRequestException("文档不存在");
         }
         KnowledgeBase kb = knowledgeBaseMapper.selectById(document.getKnowledgeBaseId());
         if (kb == null || kb.isDeleted()) {
-            throw new BadRequestException("Knowledge base not found");
+            throw new BadRequestException("知识库不存在");
         }
         try {
-            log.info("Starting ingestion task. taskId={}, documentId={}, fileName={}",
+            log.info("开始执行文档入库任务。taskId={}, documentId={}, fileName={}",
                     task.getId(), document.getId(), document.getFileName());
             task.setStatus(TaskStatus.RUNNING);
             task.setAttempts(task.getAttempts() + 1);
@@ -121,13 +121,13 @@ public class IngestionWorker {
             try (InputStream inputStream = storageService.open(document.getObjectKey())) {
                 text = parserService.parse(inputStream);
             }
-            log.debug("Document parsed. taskId={}, documentId={}, textLength={}",
+            log.debug("文档解析完成。taskId={}, documentId={}, textLength={}",
                     task.getId(), document.getId(), text.length());
             List<String> chunks = textChunker.split(text, kb.getChunkSize(), kb.getChunkOverlap());
             if (chunks.isEmpty()) {
-                throw new BadRequestException("Parsed document is empty");
+                throw new BadRequestException("解析后的文档内容为空");
             }
-            log.info("Document chunked. taskId={}, documentId={}, chunks={}, chunkSize={}, overlap={}",
+            log.info("文档切片完成。taskId={}, documentId={}, chunks={}, chunkSize={}, overlap={}",
                     task.getId(), document.getId(), chunks.size(), kb.getChunkSize(), kb.getChunkOverlap());
             vectorIndexService.deleteByDocument(document.getId());
             for (int i = 0; i < chunks.size(); i++) {
@@ -140,10 +140,10 @@ public class IngestionWorker {
             task.setStatus(TaskStatus.SUCCEEDED);
             task.setFinishedAt(Instant.now());
             task.setErrorMessage(null);
-            log.info("Ingestion task succeeded. taskId={}, documentId={}, chunks={}",
+            log.info("文档入库任务执行成功。taskId={}, documentId={}, chunks={}",
                     task.getId(), document.getId(), chunks.size());
         } catch (Throwable ex) {
-            log.error("Ingestion task failed. taskId={}, documentId={}, fileName={}, attempt={}/{}",
+            log.error("文档入库任务执行失败。taskId={}, documentId={}, fileName={}, attempt={}/{}",
                     task.getId(),
                     document.getId(),
                     document.getFileName(),

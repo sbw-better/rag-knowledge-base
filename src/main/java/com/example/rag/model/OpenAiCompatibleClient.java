@@ -54,7 +54,7 @@ public class OpenAiCompatibleClient implements EmbeddingClient, LlmClient {
     @Override
     public List<Double> embed(String text) {
         if (blank(properties.model().apiKey())) {
-            log.debug("Using local fallback embedding. dimensions={}, textLength={}",
+            log.debug("未配置模型 API Key，使用本地 fallback embedding。dimensions={}, textLength={}",
                     properties.model().embeddingDimensions(), text == null ? 0 : text.length());
             return localEmbedding(text, properties.model().embeddingDimensions());
         }
@@ -72,17 +72,17 @@ public class OpenAiCompatibleClient implements EmbeddingClient, LlmClient {
             JsonNode embedding = objectMapper.readTree(json).path("data").get(0).path("embedding");
             List<Double> values = new ArrayList<>();
             embedding.forEach(node -> values.add(node.asDouble()));
-            log.debug("Embedding request succeeded. model={}, dimensions={}, textLength={}",
+            log.debug("Embedding 请求成功。model={}, dimensions={}, textLength={}",
                     properties.model().embeddingModel(), values.size(), text == null ? 0 : text.length());
             return values;
         } catch (ResourceAccessException ex) {
-            log.warn("Embedding request failed by network. baseUrl={}, model={}",
+            log.warn("Embedding 请求网络失败。baseUrl={}, model={}",
                     properties.model().baseUrl(), properties.model().embeddingModel());
             throw new BadRequestException("Embedding 调用失败：无法连接模型服务。请检查网络是否能访问 "
                     + properties.model().baseUrl()
                     + "，或改用可访问的 OpenAI-compatible 地址。");
         } catch (RestClientResponseException ex) {
-            log.warn("Embedding request rejected. baseUrl={}, model={}, status={}",
+            log.warn("Embedding 请求被模型服务拒绝。baseUrl={}, model={}, status={}",
                     properties.model().baseUrl(), properties.model().embeddingModel(), ex.getStatusCode().value());
             throw new BadRequestException("Embedding 调用失败：模型服务返回 HTTP "
                     + ex.getStatusCode().value()
@@ -95,8 +95,8 @@ public class OpenAiCompatibleClient implements EmbeddingClient, LlmClient {
     @Override
     public String chat(List<Map<String, String>> messages) {
         if (blank(properties.model().apiKey())) {
-            log.debug("Using chat fallback because OPENAI_API_KEY is empty.");
-            return "OPENAI_API_KEY is not configured. Retrieval is working; configure a model key for final LLM answers.";
+            log.debug("OPENAI_API_KEY 为空，使用本地 Chat fallback。");
+            return "当前未配置 OPENAI_API_KEY。检索链路可以正常验证；如需生成真实模型回答，请先配置可用的模型 API Key。";
         }
         Map<String, Object> body = new HashMap<>();
         body.put("model", properties.model().chatModel());
@@ -110,16 +110,16 @@ public class OpenAiCompatibleClient implements EmbeddingClient, LlmClient {
                     .retrieve()
                     .body(String.class);
             String answer = objectMapper.readTree(json).path("choices").get(0).path("message").path("content").asText();
-            log.info("Chat request succeeded. model={}, messages={}", properties.model().chatModel(), messages.size());
+            log.info("Chat 请求成功。model={}, messages={}", properties.model().chatModel(), messages.size());
             return answer;
         } catch (ResourceAccessException ex) {
-            log.warn("Chat request failed by network. baseUrl={}, model={}",
+            log.warn("Chat 请求网络失败。baseUrl={}, model={}",
                     properties.model().baseUrl(), properties.model().chatModel());
             throw new BadRequestException("Chat 调用失败：无法连接模型服务。请检查网络是否能访问 "
                     + properties.model().baseUrl()
                     + "，或改用可访问的 OpenAI-compatible 地址。");
         } catch (RestClientResponseException ex) {
-            log.warn("Chat request rejected. baseUrl={}, model={}, status={}",
+            log.warn("Chat 请求被模型服务拒绝。baseUrl={}, model={}, status={}",
                     properties.model().baseUrl(), properties.model().chatModel(), ex.getStatusCode().value());
             throw new BadRequestException("Chat 调用失败：模型服务返回 HTTP "
                     + ex.getStatusCode().value()
@@ -132,8 +132,8 @@ public class OpenAiCompatibleClient implements EmbeddingClient, LlmClient {
     @Override
     public void chatStream(List<Map<String, String>> messages, Consumer<String> onDelta) {
         if (blank(properties.model().apiKey())) {
-            log.debug("Using chat stream fallback because OPENAI_API_KEY is empty.");
-            onDelta.accept("OPENAI_API_KEY is not configured. Retrieval is working; configure a model key for final LLM answers.");
+            log.debug("OPENAI_API_KEY 为空，使用本地流式 Chat fallback。");
+            onDelta.accept("当前未配置 OPENAI_API_KEY。检索链路可以正常验证；如需生成真实模型回答，请先配置可用的模型 API Key。");
             return;
         }
         Map<String, Object> body = new HashMap<>();
@@ -152,7 +152,7 @@ public class OpenAiCompatibleClient implements EmbeddingClient, LlmClient {
             try (Stream<String> lines = response.body()) {
                 if (response.statusCode() / 100 != 2) {
                     String responseBody = lines.limit(20).collect(Collectors.joining("\n"));
-                    log.warn("Chat stream request rejected. baseUrl={}, model={}, status={}",
+                    log.warn("Chat 流式请求被模型服务拒绝。baseUrl={}, model={}, status={}",
                             properties.model().baseUrl(), properties.model().chatModel(), response.statusCode());
                     throw new BadRequestException("Chat 流式调用失败：模型服务返回 HTTP "
                             + response.statusCode()
@@ -161,7 +161,7 @@ public class OpenAiCompatibleClient implements EmbeddingClient, LlmClient {
                 }
                 lines.forEach(line -> handleStreamLine(line, onDelta));
             }
-            log.info("Chat stream request succeeded. model={}, messages={}", properties.model().chatModel(), messages.size());
+            log.info("Chat 流式请求成功。model={}, messages={}", properties.model().chatModel(), messages.size());
         } catch (BadRequestException ex) {
             throw ex;
         } catch (InterruptedException ex) {
@@ -195,7 +195,7 @@ public class OpenAiCompatibleClient implements EmbeddingClient, LlmClient {
                 onDelta.accept(delta);
             }
         } catch (Exception ex) {
-            log.debug("Ignored malformed chat stream line. line={}", line);
+            log.debug("已忽略格式异常的 Chat 流式响应行。line={}", line);
         }
     }
 

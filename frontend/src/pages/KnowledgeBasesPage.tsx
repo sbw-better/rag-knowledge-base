@@ -15,6 +15,7 @@ export default function KnowledgeBasesPage() {
   const [chunkSize, setChunkSize] = useState(800);
   const [chunkOverlap, setChunkOverlap] = useState(120);
   const [topK, setTopK] = useState(5);
+  const [minScore, setMinScore] = useState(0);
   const requestedCreateOpen = searchParams.get("create") === "1";
 
   const listQuery = useQuery({
@@ -30,7 +31,7 @@ export default function KnowledgeBasesPage() {
   const createOpen = canCreateKnowledgeBase && requestedCreateOpen;
 
   const createMutation = useMutation({
-    mutationFn: () => api.createKnowledgeBase({ name: name.trim(), description: description.trim(), chunkSize, chunkOverlap, topK }),
+    mutationFn: () => api.createKnowledgeBase({ name: name.trim(), description: description.trim(), chunkSize, chunkOverlap, topK, minScore }),
     onSuccess: (kb) => {
       queryClient.invalidateQueries({ queryKey: ["knowledge-bases"] });
       setName("");
@@ -38,6 +39,7 @@ export default function KnowledgeBasesPage() {
       setChunkSize(800);
       setChunkOverlap(120);
       setTopK(5);
+      setMinScore(0);
       setSearchParams({});
       navigate(`/app/knowledge-bases/${kb.id}`);
     }
@@ -122,15 +124,18 @@ export default function KnowledgeBasesPage() {
           <Field label="描述">
             <Textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="说明该知识库的业务范围" maxLength={2000} />
           </Field>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Field label="Chunk">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="切片长度">
               <Input type="number" min={200} max={4000} value={chunkSize} onChange={(event) => setChunkSize(Number(event.target.value))} />
             </Field>
-            <Field label="Overlap">
+            <Field label="重叠长度">
               <Input type="number" min={0} max={1000} value={chunkOverlap} onChange={(event) => setChunkOverlap(Number(event.target.value))} />
             </Field>
-            <Field label="TopK">
+            <Field label="默认召回数">
               <Input type="number" min={1} max={50} value={topK} onChange={(event) => setTopK(Number(event.target.value))} />
+            </Field>
+            <Field label="最低相关度">
+              <Input type="number" min={0} max={1} step={0.01} value={minScore} onChange={(event) => setMinScore(Number(event.target.value))} />
             </Field>
           </div>
           <ErrorMessage error={createMutation.error} />

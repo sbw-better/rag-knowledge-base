@@ -61,12 +61,12 @@ public class TenantAdminService {
         requireAdmin(current);
         String name = request.name().trim();
         if (tenantMapper.selectByNameIgnoreCase(name) != null) {
-            throw new BadRequestException("Tenant name already exists");
+            throw new BadRequestException("租户名称已存在");
         }
         Tenant tenant = new Tenant(name);
         tenantMapper.insert(tenant);
         Tenant saved = tenantMapper.selectById(tenant.getId());
-        log.info("Tenant created. operatorId={}, operatorTenantId={}, tenantId={}, tenantName={}",
+        log.info("租户创建成功。operatorId={}, operatorTenantId={}, tenantId={}, tenantName={}",
                 current.getId(), current.getTenantId(), tenant.getId(), tenant.getName());
         return toResponse(saved);
     }
@@ -83,7 +83,7 @@ public class TenantAdminService {
     private static void requireAdmin(UserAccount user) {
         boolean admin = user.getRoles().stream().map(Role::getName).anyMatch("ADMIN"::equals);
         if (!admin) {
-            throw new ForbiddenException("Only admin can manage tenants");
+            throw new ForbiddenException("只有平台管理员可以管理租户");
         }
     }
 }

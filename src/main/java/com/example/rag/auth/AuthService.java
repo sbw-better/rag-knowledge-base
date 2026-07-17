@@ -53,7 +53,7 @@ public class AuthService {
             tenantMapper.insert(tenant);
         }
         if (userMapper.selectByTenantIdAndEmailIgnoreCase(tenant.getId(), normalizedEmail) != null) {
-            throw new BadRequestException("Email already registered");
+            throw new BadRequestException("该邮箱已经注册");
         }
 
         boolean firstUser = userMapper.selectCount(null) == 0;
@@ -71,7 +71,7 @@ public class AuthService {
         for (Role role : user.getRoles()) {
             userMapper.insertUserRole(user.getId(), role.getId());
         }
-        log.info("User registered. userId={}, tenantId={}, email={}, firstUser={}",
+        log.info("用户注册成功。userId={}, tenantId={}, email={}, firstUser={}",
                 user.getId(), tenant.getId(), user.getEmail(), firstUser);
         return new AuthResponse(jwtService.createToken(user), toUserResponse(user));
     }
@@ -82,14 +82,14 @@ public class AuthService {
     public AuthResponse login(LoginRequest request) {
         UserAccount user = userMapper.selectByEmailIgnoreCase(request.email());
         if (user == null) {
-            throw new BadRequestException("Invalid email or password");
+            throw new BadRequestException("邮箱或密码错误");
         }
         attachRoles(user);
         if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
-            log.warn("User login failed. email={}", request.email());
-            throw new BadRequestException("Invalid email or password");
+            log.warn("用户登录失败，密码不匹配。email={}", request.email());
+            throw new BadRequestException("邮箱或密码错误");
         }
-        log.info("User login succeeded. userId={}, tenantId={}, email={}",
+        log.info("用户登录成功。userId={}, tenantId={}, email={}",
                 user.getId(), user.getTenantId(), user.getEmail());
         return new AuthResponse(jwtService.createToken(user), toUserResponse(user));
     }
@@ -101,7 +101,7 @@ public class AuthService {
     private Role requiredRole(String name) {
         Role role = roleMapper.selectByName(name);
         if (role == null) {
-            throw new IllegalStateException("Missing role " + name);
+            throw new IllegalStateException("系统缺少必要角色：" + name);
         }
         return role;
     }

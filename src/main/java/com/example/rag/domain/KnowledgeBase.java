@@ -37,6 +37,14 @@ public class KnowledgeBase {
     private int topK = 8;
 
     /**
+     * 默认最低检索分数阈值。0 表示不过滤；大于 0 时会丢弃低于阈值的召回片段。
+     *
+     * <p>该值用于减少“问题不相关但仍返回来源”的情况。不同检索模式的分数含义不完全一致，
+     * 所以生产环境通常需要结合真实数据逐步调参。</p>
+     */
+    private double minScore = 0;
+
+    /**
      * 逻辑删除标记。删除知识库时不物理删除记录，便于审计和后续恢复策略扩展。
      */
     private boolean deleted = false;
@@ -105,6 +113,14 @@ public class KnowledgeBase {
 
     public void setTopK(int topK) {
         this.topK = topK;
+    }
+
+    public double getMinScore() {
+        return minScore;
+    }
+
+    public void setMinScore(double minScore) {
+        this.minScore = minScore;
     }
 
     public boolean isDeleted() {

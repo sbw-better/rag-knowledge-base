@@ -1,11 +1,17 @@
 package com.example.rag.document;
 
 import com.example.rag.common.ApiResponse;
+import com.example.rag.document.dto.DocumentChunkResponse;
 import com.example.rag.document.dto.DocumentResponse;
+import com.example.rag.document.dto.TaskResponse;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 
 /**
@@ -31,5 +37,21 @@ public class DocumentController {
     @GetMapping("/{id}")
     ApiResponse<DocumentResponse> get(@PathVariable Long id) {
         return ApiResponse.ok(documentService.get(id));
+    }
+
+    @GetMapping("/{id}/chunks")
+    ApiResponse<List<DocumentChunkResponse>> chunks(@PathVariable Long id) {
+        return ApiResponse.ok(documentService.listChunks(id));
+    }
+
+    @PostMapping("/{id}/reingest")
+    ApiResponse<TaskResponse> reingest(@PathVariable Long id) {
+        return ApiResponse.ok(documentService.reingest(id));
+    }
+
+    @DeleteMapping("/{id}")
+    ApiResponse<Void> delete(@PathVariable Long id) {
+        documentService.delete(id);
+        return ApiResponse.ok(null);
     }
 }

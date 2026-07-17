@@ -21,7 +21,19 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Badge, Button, EmptyState, ErrorMessage, Field, Input, Label, PageHeader, Panel, PanelHeader, Textarea } from "../components/ui";
 import { api } from "../lib/api";
 import { cn, formatBytes, formatDateTime, shortId } from "../lib/utils";
-import type { Citation, ChatResponse, DocumentItem, DocumentResponse, KnowledgeBaseMemberRequest, MessageItem, SearchHit, SearchMode, TaskResponse } from "../types";
+import type {
+  Citation,
+  ChatResponse,
+  ConversationSummaryResponse,
+  DocumentChunkResponse,
+  DocumentItem,
+  DocumentResponse,
+  KnowledgeBaseMemberRequest,
+  MessageItem,
+  SearchHit,
+  SearchMode,
+  TaskResponse
+} from "../types";
 
 type Tab = "documents" | "search" | "chat" | "members" | "config" | "operations";
 type RecentUpload = {
@@ -255,6 +267,7 @@ function DocumentsPanel({ kbId }: { kbId: string }) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileValidationError, setFileValidationError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
+  const [chunkDocumentId, setChunkDocumentId] = useState<string | undefined>();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const documentsQuery = useQuery({
@@ -272,6 +285,7 @@ function DocumentsPanel({ kbId }: { kbId: string }) {
     setSelectedFile(null);
     setFileValidationError("");
     setIsDragging(false);
+    setChunkDocumentId(undefined);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -300,6 +314,35 @@ function DocumentsPanel({ kbId }: { kbId: string }) {
         fileInputRef.current.value = "";
       }
       queryClient.invalidateQueries({ queryKey: ["knowledge-base-documents", kbId] });
+    }
+  });
+
+  const chunksQuery = useQuery({
+    queryKey: ["document-chunks", chunkDocumentId],
+    queryFn: () => api.listDocumentChunks(chunkDocumentId!),
+    enabled: Boolean(chunkDocumentId)
+  });
+
+  const selectedChunkDocument = useMemo(
+    () => documentsQuery.data?.find((item) => item.document.id === chunkDocumentId)?.document,
+    [chunkDocumentId, documentsQuery.data]
+  );
+
+  const reingestMutation = useMutation({
+    mutationFn: (documentId: string) => api.reingestDocument(documentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["knowledge-base-documents", kbId] });
+    }
+  });
+
+  const deleteDocumentMutation = useMutation({
+    mutationFn: (documentId: string) => api.deleteDocument(documentId),
+    onSuccess: (_, documentId) => {
+      if (chunkDocumentId === documentId) {
+        setChunkDocumentId(undefined);
+      }
+      queryClient.invalidateQueries({ queryKey: ["knowledge-base-documents", kbId] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-bases"] });
     }
   });
 
@@ -379,17 +422,55 @@ function DocumentsPanel({ kbId }: { kbId: string }) {
           ) : (
             <div className="max-h-none space-y-3 overflow-y-visible pr-0 xl:max-h-[620px] xl:overflow-y-auto xl:pr-2">
               {documentsQuery.data?.map((item) => (
-                <TaskRow key={item.document.id} item={item} onTaskChange={replaceTask} />
+                <TaskRow
+                  key={item.document.id}
+                  item={item}
+                  selected={chunkDocumentId === item.document.id}
+                  busy={reingestMutation.isPending || deleteDocumentMutation.isPending}
+                  onTaskChange={replaceTask}
+                  onViewChunks={() => setChunkDocumentId((current) => current === item.document.id ? undefined : item.document.id)}
+                  onReingest={() => reingestMutation.mutate(item.document.id)}
+                  onDelete={() => {
+                    if (window.confirm(`确认删除文档「${item.document.fileName}」吗？历史回答中的相关引用也会被清理。`)) {
+                      deleteDocumentMutation.mutate(item.document.id);
+                    }
+                  }}
+                />
               ))}
             </div>
           )}
+          <ErrorMessage error={reingestMutation.error || deleteDocumentMutation.error} />
         </div>
       </Panel>
+      <DocumentChunksDrawer
+        open={Boolean(chunkDocumentId)}
+        document={selectedChunkDocument}
+        chunks={chunksQuery.data ?? []}
+        loading={chunksQuery.isLoading}
+        error={chunksQuery.error}
+        onClose={() => setChunkDocumentId(undefined)}
+      />
     </div>
   );
 }
 
-function TaskRow({ item, onTaskChange }: { item: DocumentItem; onTaskChange: (task: TaskResponse) => void }) {
+function TaskRow({
+  item,
+  selected,
+  busy,
+  onTaskChange,
+  onViewChunks,
+  onReingest,
+  onDelete
+}: {
+  item: DocumentItem;
+  selected: boolean;
+  busy: boolean;
+  onTaskChange: (task: TaskResponse) => void;
+  onViewChunks: () => void;
+  onReingest: () => void;
+  onDelete: () => void;
+}) {
   const shouldPoll = Boolean(item.task && !["SUCCEEDED", "FAILED", "CANCELLED"].includes(item.task.status));
   const taskQuery = useQuery({
     queryKey: ["task", item.task?.id],
@@ -407,7 +488,7 @@ function TaskRow({ item, onTaskChange }: { item: DocumentItem; onTaskChange: (ta
   }, [item.task, onTaskChange, taskQuery.data]);
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+    <div className={cn("rounded-lg border bg-white px-4 py-3", selected ? "border-cyan-300 shadow-sm shadow-cyan-900/10" : "border-slate-200")}>
       <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <p className="line-clamp-1 text-sm font-medium text-slate-900">{item.document.fileName}</p>
@@ -416,7 +497,18 @@ function TaskRow({ item, onTaskChange }: { item: DocumentItem; onTaskChange: (ta
             {task ? ` · 任务 ${shortId(task.id)}` : ""}
           </p>
         </div>
-        <Badge tone={statusTone(task?.status ?? item.document.status)}>{task?.status ?? item.document.status}</Badge>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Badge tone={statusTone(task?.status ?? item.document.status)}>{task?.status ?? item.document.status}</Badge>
+          <Button type="button" variant="secondary" size="sm" onClick={onViewChunks}>
+            {selected ? "查看中" : "查看切片"}
+          </Button>
+          <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={onReingest}>
+            重入库
+          </Button>
+          <Button type="button" variant="danger" size="sm" disabled={busy} onClick={onDelete}>
+            删除
+          </Button>
+        </div>
       </div>
       {task ? (
         <div className="mt-3 grid gap-2 text-xs text-slate-500 sm:grid-cols-3">
@@ -440,6 +532,11 @@ function SearchPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number 
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<SearchMode>("HYBRID");
   const [topK, setTopK] = useState(defaultTopK);
+  const searchModes: Array<{ value: SearchMode; title: string; description: string }> = [
+    { value: "HYBRID", title: "混合检索", description: "优先推荐，同时结合语义和关键词" },
+    { value: "VECTOR", title: "语义检索", description: "适合意思相近但表达不同的问题" },
+    { value: "KEYWORD", title: "关键词检索", description: "适合精确术语、编号、字段名称" }
+  ];
 
   const searchMutation = useMutation({
     mutationFn: () => api.search({ knowledgeBaseId: kbId, query, mode, topK })
@@ -451,34 +548,57 @@ function SearchPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number 
   }
 
   return (
-    <div className="grid min-w-0 gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
-      <Panel className="h-fit">
-        <PanelHeader title="检索调试" description="用于验证文档切片和召回效果，参数只影响本次调试，不会保存到知识库设置。" />
-        <form onSubmit={submit} className="space-y-4 p-5">
+    <div className="grid min-w-0 gap-5 xl:grid-cols-[430px_minmax(0,1fr)]">
+      <Panel className="h-fit overflow-hidden">
+        <PanelHeader title="检索调试" description="用于验证文档切片和召回效果，参数只影响本次调试。" />
+        <form onSubmit={submit} className="space-y-5 p-5">
           <Field label="问题或关键词">
-            <Textarea value={query} onChange={(event) => setQuery(event.target.value)} placeholder="输入要检索的内容" required />
+            <Textarea
+              className="min-h-32"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="输入要验证召回效果的问题，例如：退款多久到账？"
+              required
+            />
           </Field>
-          <Field label="检索模式">
-            <div className="grid grid-cols-3 gap-2">
-              {(["VECTOR", "KEYWORD", "HYBRID"] as SearchMode[]).map((item) => (
+
+          <section className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-medium text-slate-900">检索策略</h3>
+                <p className="mt-0.5 text-xs leading-5 text-slate-500">普通使用建议选择混合检索。</p>
+              </div>
+              <Badge tone="cyan">{mode}</Badge>
+            </div>
+            <div className="grid gap-2">
+              {searchModes.map((item) => (
                 <button
-                  key={item}
+                  key={item.value}
                   type="button"
                   className={cn(
-                    "h-9 rounded-lg border text-xs font-medium",
-                    mode === item ? "border-emerald-600 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-white text-slate-600"
+                    "rounded-lg border px-3 py-2 text-left transition",
+                    mode === item.value
+                      ? "border-emerald-300 bg-white text-emerald-800 shadow-sm shadow-emerald-950/5 ring-1 ring-emerald-100"
+                      : "border-slate-200 bg-white text-slate-700 hover:border-cyan-200 hover:bg-cyan-50/50"
                   )}
-                  onClick={() => setMode(item)}
+                  onClick={() => setMode(item.value)}
                 >
-                  {item}
+                  <span className="block text-sm font-medium">{item.title}</span>
+                  <span className="mt-0.5 block text-xs leading-5 text-slate-500">{item.description}</span>
                 </button>
               ))}
             </div>
-          </Field>
-          <Field label="临时 TopK">
-            <Input type="number" min={1} max={50} value={topK} onChange={(event) => setTopK(Number(event.target.value))} />
-          </Field>
-          <p className="-mt-2 text-xs leading-5 text-slate-500">仅用于本次检索调试；默认 TopK 请到“配置”中修改。</p>
+          </section>
+
+          <section className="rounded-lg border border-slate-200 bg-white p-3">
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+              <Field label="本次召回数量">
+                <Input type="number" min={1} max={50} value={topK} onChange={(event) => setTopK(Number(event.target.value))} />
+              </Field>
+              <p className="max-w-48 text-xs leading-5 text-slate-500">只影响这次调试，不会覆盖知识库默认配置。</p>
+            </div>
+          </section>
+
           <ErrorMessage error={searchMutation.error} />
           <Button className="w-full" type="submit" disabled={searchMutation.isPending}>
             <Search className="h-4 w-4" />
@@ -488,8 +608,12 @@ function SearchPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number 
       </Panel>
 
       <Panel className="min-w-0">
-        <PanelHeader title="命中片段" description="展示召回来源、分数和文本内容。" />
-        <div className="space-y-3 p-5">
+        <PanelHeader
+          title="命中片段"
+          description="展示召回来源、分数和文本内容。"
+          actions={searchMutation.data ? <Badge tone="slate">{searchMutation.data.hits.length} 条结果</Badge> : null}
+        />
+        <div className="min-h-[420px] space-y-3 p-5">
           {searchMutation.data?.hits.length === 0 ? <EmptyState title="没有命中结果" description="可以尝试更换问题、模式或等待文档入库完成。" /> : null}
           {!searchMutation.data ? <EmptyState title="等待检索" description="提交一个问题后，这里会显示命中的文档片段。" /> : null}
           {searchMutation.data?.hits.map((hit) => (
@@ -527,6 +651,8 @@ function ChatPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number })
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<ChatItem[]>([]);
   const [selectedAssistantId, setSelectedAssistantId] = useState<string | undefined>();
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyKeyword, setHistoryKeyword] = useState("");
 
   const conversationQuery = useQuery({
     queryKey: ["chat-conversation", kbId, conversationId ?? "latest"],
@@ -535,11 +661,19 @@ function ChatPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number })
     retry: false
   });
 
+  const conversationsQuery = useQuery({
+    queryKey: ["chat-conversations", kbId],
+    queryFn: () => api.listConversations(kbId),
+    enabled: Boolean(kbId)
+  });
+
   useEffect(() => {
     setConversationId(readStoredConversationId(kbId));
     setMessages([]);
     setSelectedAssistantId(undefined);
     setQuestion("");
+    setHistoryOpen(false);
+    setHistoryKeyword("");
     setSkipRestore(false);
   }, [kbId]);
 
@@ -675,6 +809,26 @@ function ChatPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number })
     },
     onSuccess: () => {
       setQuestion("");
+      queryClient.invalidateQueries({ queryKey: ["chat-conversations", kbId] });
+    }
+  });
+
+  const renameConversationMutation = useMutation({
+    mutationFn: ({ id, title }: { id: string; title: string }) => api.renameConversation(id, title),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["chat-conversations", kbId] });
+      queryClient.invalidateQueries({ queryKey: ["chat-conversation", kbId, conversationId ?? "latest"] });
+    }
+  });
+
+  const deleteConversationMutation = useMutation({
+    mutationFn: (id: string) => api.deleteConversation(id),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ["chat-conversations", kbId] });
+      queryClient.removeQueries({ queryKey: ["chat-conversation", kbId, id] });
+      if (conversationId === id) {
+        resetConversation();
+      }
     }
   });
 
@@ -698,10 +852,62 @@ function ChatPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number })
     setMessages([]);
     setSelectedAssistantId(undefined);
     setQuestion("");
+    setHistoryOpen(false);
+    setHistoryKeyword("");
     setSkipRestore(true);
     chatMutation.reset();
     queryClient.removeQueries({ queryKey: ["chat-conversation", kbId] });
   }
+
+  function switchConversation(nextConversationId: string) {
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
+    chatMutation.reset();
+    if (!nextConversationId) {
+      resetConversation();
+      return;
+    }
+    if (nextConversationId === conversationId) {
+      setHistoryOpen(false);
+      return;
+    }
+    setConversationId(nextConversationId);
+    storeConversationId(kbId, nextConversationId);
+    setMessages([]);
+    setSelectedAssistantId(undefined);
+    setHistoryOpen(false);
+    setSkipRestore(false);
+  }
+
+  function renameConversation(conversation: ConversationSummaryResponse) {
+    const currentTitle = conversation.title || `会话 ${shortId(conversation.id)}`;
+    const nextTitle = window.prompt("请输入新的会话标题，便于后续在历史会话中搜索", currentTitle);
+    if (nextTitle?.trim()) {
+      renameConversationMutation.mutate({ id: conversation.id, title: nextTitle.trim() });
+    }
+  }
+
+  function deleteConversation(conversation: ConversationSummaryResponse) {
+    const title = conversation.title || `会话 ${shortId(conversation.id)}`;
+    if (window.confirm(`确认删除会话「${title}」及其问答历史吗？删除后无法从前端恢复。`)) {
+      deleteConversationMutation.mutate(conversation.id);
+    }
+  }
+
+  const currentConversationTitle = conversationId
+    ? conversationsQuery.data?.find((item) => item.id === conversationId)?.title ?? `会话 ${shortId(conversationId)}`
+    : "新会话";
+  const filteredConversations = useMemo(() => {
+    const keyword = historyKeyword.trim().toLowerCase();
+    const conversations = conversationsQuery.data ?? [];
+    if (!keyword) {
+      return conversations;
+    }
+    return conversations.filter((conversation) => {
+      const title = conversation.title || `会话 ${shortId(conversation.id)}`;
+      return `${title} ${conversation.id}`.toLowerCase().includes(keyword);
+    });
+  }, [conversationsQuery.data, historyKeyword]);
 
   const selectedAssistant = useMemo(
     () => messages.find((item) => item.role === "assistant" && item.id === selectedAssistantId)
@@ -735,12 +941,110 @@ function ChatPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number })
         <PanelHeader
           title="知识库问答"
           description={chatDescription}
-          actions={(conversationId || messages.length > 0) ? (
-            <Button type="button" variant="secondary" size="sm" onClick={resetConversation}>
-              <MessageSquare className="h-4 w-4" />
-              新建会话
-            </Button>
-          ) : null}
+          actions={
+            <div className="flex max-w-full flex-wrap items-center gap-2">
+              <div className="relative">
+                <Button type="button" variant="secondary" size="sm" onClick={() => setHistoryOpen((current) => !current)}>
+                  <MessageSquare className="h-4 w-4" />
+                  历史会话
+                </Button>
+                {historyOpen ? (
+                  <div className="absolute right-0 top-10 z-20 w-96 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl shadow-slate-950/10">
+                    <div className="border-b border-slate-100 px-3 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-slate-900">历史会话</p>
+                          <p className="mt-0.5 truncate text-xs text-slate-500">当前：{currentConversationTitle}</p>
+                        </div>
+                        <button
+                          type="button"
+                          className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                          aria-label="关闭历史会话"
+                          onClick={() => setHistoryOpen(false)}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <div className="relative mt-3">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <Input
+                          className="h-9 pl-9 pr-9"
+                          value={historyKeyword}
+                          onChange={(event) => setHistoryKeyword(event.target.value)}
+                          placeholder="搜索会话标题或编号"
+                        />
+                        {historyKeyword ? (
+                          <button
+                            type="button"
+                            className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                            aria-label="清空搜索"
+                            onClick={() => setHistoryKeyword("")}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                    {conversationsQuery.isLoading ? <p className="px-3 py-3 text-sm text-slate-500">正在加载会话...</p> : null}
+                    {!conversationsQuery.isLoading && (conversationsQuery.data ?? []).length === 0 ? (
+                      <p className="px-3 py-3 text-sm text-slate-500">暂无历史会话</p>
+                    ) : null}
+                    {!conversationsQuery.isLoading && (conversationsQuery.data ?? []).length > 0 && filteredConversations.length === 0 ? (
+                      <p className="px-3 py-3 text-sm text-slate-500">没有找到匹配的会话</p>
+                    ) : null}
+                    <div className="max-h-72 overflow-y-auto p-2">
+                      {filteredConversations.map((conversation) => (
+                        <button
+                          key={conversation.id}
+                          type="button"
+                          className={cn(
+                            "flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left transition",
+                            conversation.id === conversationId
+                              ? "bg-emerald-50 text-emerald-800"
+                              : "text-slate-700 hover:bg-slate-50 hover:text-slate-950"
+                          )}
+                          onClick={() => switchConversation(conversation.id)}
+                        >
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium">{conversation.title || `会话 ${shortId(conversation.id)}`}</span>
+                            <span className="mt-0.5 block text-xs text-slate-400">更新于 {formatDateTime(conversation.updatedAt)}</span>
+                          </span>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              className="rounded-md px-2 py-1 text-xs text-slate-500 transition hover:bg-white hover:text-slate-900"
+                              disabled={renameConversationMutation.isPending}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                renameConversation(conversation);
+                              }}
+                            >
+                              编辑
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded-md px-2 py-1 text-xs text-rose-500 transition hover:bg-rose-50 hover:text-rose-700"
+                              disabled={deleteConversationMutation.isPending}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                deleteConversation(conversation);
+                              }}
+                            >
+                              删除
+                            </button>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+              <Button type="button" variant="secondary" size="sm" onClick={resetConversation}>
+                <MessageSquare className="h-4 w-4" />
+                新建会话
+              </Button>
+            </div>
+          }
         />
         <div className="flex h-[min(500px,calc(100vh-340px))] min-h-[420px] flex-col">
           <div className="flex-1 space-y-4 overflow-y-auto p-5">
@@ -785,6 +1089,7 @@ function ChatPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number })
           </div>
           <form onSubmit={submit} className="border-t border-slate-100 p-4">
             <ErrorMessage error={chatMutation.error} />
+            <ErrorMessage error={renameConversationMutation.error || deleteConversationMutation.error} />
             <div className="mt-3 flex items-center gap-3">
               <Input
                 className="h-12 min-w-0 text-base sm:text-sm"
@@ -828,6 +1133,80 @@ function ChatPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number })
           ))}
         </div>
       </Panel>
+    </div>
+  );
+}
+
+function DocumentChunksDrawer({
+  open,
+  document,
+  chunks,
+  loading,
+  error,
+  onClose
+}: {
+  open: boolean;
+  document?: DocumentResponse;
+  chunks: DocumentChunkResponse[];
+  loading: boolean;
+  error: unknown;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, open]);
+
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-950/30 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="文档切片详情">
+      <button className="absolute inset-0 h-full w-full cursor-default" type="button" aria-label="关闭切片详情" onClick={onClose} />
+      <aside className="absolute inset-y-0 right-0 flex w-full max-w-3xl flex-col border-l border-slate-200 bg-white shadow-2xl shadow-slate-950/15 sm:w-[min(760px,calc(100vw-4rem))]">
+        <div className="flex min-w-0 items-start justify-between gap-4 border-b border-slate-100 px-4 py-4 sm:px-5">
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <h3 className="truncate text-base font-semibold text-slate-950">文档切片</h3>
+              <Badge tone="cyan">{chunks.length} 个切片</Badge>
+            </div>
+            <p className="mt-1 truncate text-sm text-slate-600">{document?.fileName ?? "正在加载文档信息..."}</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">用于检查解析和切分效果。切片很多时只在当前窗口内滚动，不影响文档任务列表。</p>
+          </div>
+          <button
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            type="button"
+            aria-label="关闭"
+            onClick={onClose}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+          <ErrorMessage error={error} />
+          {loading ? <p className="text-sm text-slate-500">正在加载切片...</p> : null}
+          {!loading && chunks.length === 0 ? <EmptyState title="暂无切片" description="文档完成入库后才会生成切片。" /> : null}
+          <div className="space-y-3">
+            {chunks.map((chunk) => (
+              <details key={chunk.id} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm shadow-slate-900/5">
+                <summary className="cursor-pointer select-none text-sm font-medium text-slate-800">切片 #{chunk.chunkIndex}</summary>
+                <p className="mt-3 max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700">
+                  {chunk.content}
+                </p>
+              </details>
+            ))}
+          </div>
+        </div>
+      </aside>
     </div>
   );
 }
@@ -1008,9 +1387,9 @@ function MembersPanel({ kbId }: { kbId: string }) {
                   <Label>授权角色</Label>
                   <div className="grid gap-2 sm:grid-cols-3">
                     {([
-                      { value: "VIEWER", label: "Viewer", description: "仅问答" },
-                      { value: "EDITOR", label: "Editor", description: "维护文档" },
-                      { value: "MANAGER", label: "Manager", description: "成员、配置、索引" }
+                      { value: "VIEWER", label: "只读问答", description: "仅可使用问答" },
+                      { value: "EDITOR", label: "资料维护", description: "维护文档资料" },
+                      { value: "MANAGER", label: "知识库管理", description: "成员、配置、索引" }
                     ] as Array<{ value: KnowledgeBaseMemberRequest["permission"]; label: string; description: string }>).map((item) => (
                       <button
                         key={item.value}
@@ -1166,16 +1545,17 @@ function MembersPanel({ kbId }: { kbId: string }) {
   );
 }
 
-function KnowledgeBaseConfigPanel({ kb }: { kb: { id: string; name: string; description: string | null; chunkSize: number; chunkOverlap: number; topK: number } }) {
+function KnowledgeBaseConfigPanel({ kb }: { kb: { id: string; name: string; description: string | null; chunkSize: number; chunkOverlap: number; topK: number; minScore: number } }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(kb.name);
   const [description, setDescription] = useState(kb.description ?? "");
   const [chunkSize, setChunkSize] = useState(kb.chunkSize);
   const [chunkOverlap, setChunkOverlap] = useState(kb.chunkOverlap);
   const [topK, setTopK] = useState(kb.topK);
+  const [minScore, setMinScore] = useState(kb.minScore ?? 0);
 
   const updateMutation = useMutation({
-    mutationFn: () => api.updateKnowledgeBase(kb.id, { name, description, chunkSize, chunkOverlap, topK }),
+    mutationFn: () => api.updateKnowledgeBase(kb.id, { name, description, chunkSize, chunkOverlap, topK, minScore }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["knowledge-bases"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-base", kb.id] });
@@ -1216,15 +1596,18 @@ function KnowledgeBaseConfigPanel({ kb }: { kb: { id: string; name: string; desc
               </div>
               <Badge tone="cyan">维护人员可见</Badge>
             </div>
-            <div className="grid gap-4 md:grid-cols-3">
-              <Field label="Chunk Size">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <Field label="切片长度">
                 <Input type="number" min={200} max={4000} value={chunkSize} onChange={(event) => setChunkSize(Number(event.target.value))} />
               </Field>
-              <Field label="Chunk Overlap">
+              <Field label="重叠长度">
                 <Input type="number" min={0} max={1000} value={chunkOverlap} onChange={(event) => setChunkOverlap(Number(event.target.value))} />
               </Field>
-              <Field label="TopK">
+              <Field label="默认召回数">
                 <Input type="number" min={1} max={50} value={topK} onChange={(event) => setTopK(Number(event.target.value))} />
+              </Field>
+              <Field label="最低相关度">
+                <Input type="number" min={0} max={1} step={0.01} value={minScore} onChange={(event) => setMinScore(Number(event.target.value))} />
               </Field>
             </div>
           </section>
@@ -1235,16 +1618,20 @@ function KnowledgeBaseConfigPanel({ kb }: { kb: { id: string; name: string; desc
             <h3 className="text-sm font-semibold text-slate-900">参数说明</h3>
             <dl className="mt-3 space-y-3 text-xs leading-5 text-slate-500">
               <div>
-                <dt className="font-medium text-slate-700">Chunk Size</dt>
+                <dt className="font-medium text-slate-700">切片长度</dt>
                 <dd>单个文档片段的大致长度。数值越大，片段包含上下文越多，但召回粒度更粗。</dd>
               </div>
               <div>
-                <dt className="font-medium text-slate-700">Chunk Overlap</dt>
+                <dt className="font-medium text-slate-700">重叠长度</dt>
                 <dd>相邻片段保留的重叠长度，用于减少切片边界导致的语义断裂。</dd>
               </div>
               <div>
-                <dt className="font-medium text-slate-700">TopK</dt>
-                <dd>问答默认召回的片段数量。检索调试页里的临时 TopK 不会覆盖这里。</dd>
+                <dt className="font-medium text-slate-700">默认召回数</dt>
+                <dd>问答默认召回的片段数量。检索调试页里的临时召回数不会覆盖这里。</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-slate-700">最低相关度</dt>
+                <dd>最低召回分数。0 表示不过滤；适当提高可以减少不相关问题也显示来源的情况。</dd>
               </div>
             </dl>
           </section>

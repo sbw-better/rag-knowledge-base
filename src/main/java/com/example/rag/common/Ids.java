@@ -11,12 +11,12 @@ public final class Ids {
 
     public static Long parse(String value, String fieldName) {
         if (value == null || value.isBlank()) {
-            throw new BadRequestException(fieldName + " is required");
+            throw new BadRequestException(fieldName + " 不能为空");
         }
         try {
             return Long.valueOf(value);
         } catch (NumberFormatException ex) {
-            throw new BadRequestException(fieldName + " must be a numeric snowflake id");
+            throw new BadRequestException(fieldName + " 必须是数字类型的雪花 ID");
         }
     }
 }

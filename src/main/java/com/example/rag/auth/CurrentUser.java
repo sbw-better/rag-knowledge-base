@@ -27,7 +27,7 @@ public final class CurrentUser {
     public static UserAccount required() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !(authentication.getPrincipal() instanceof UserAccount user)) {
-            throw new ForbiddenException("Authentication required");
+            throw new ForbiddenException("当前请求未登录或登录状态无效");
         }
         return user;
     }

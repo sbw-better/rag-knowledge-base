@@ -54,14 +54,14 @@ public class KnowledgeBaseService {
     public KnowledgeBaseResponse create(KnowledgeBaseRequest request) {
         UserAccount user = CurrentUser.required();
         if (!canCreateKnowledgeBase(user)) {
-            throw new ForbiddenException("Only admin or knowledge base manager can create knowledge base");
+            throw new ForbiddenException("只有平台管理员或知识库管理员可以创建知识库");
         }
         KnowledgeBase kb = new KnowledgeBase();
         kb.setTenantId(user.getTenantId());
         kb.setOwnerId(user.getId());
         apply(kb, request);
         knowledgeBaseMapper.insert(kb);
-        log.info("Knowledge base created. tenantId={}, ownerId={}, knowledgeBaseId={}, name={}",
+        log.info("知识库创建成功。tenantId={}, ownerId={}, knowledgeBaseId={}, name={}",
                 user.getTenantId(), user.getId(), kb.getId(), kb.getName());
         return toResponse(kb);
     }
@@ -77,7 +77,7 @@ public class KnowledgeBaseService {
                 .filter(kb -> canAccess(kb, user))
                 .map(this::toResponse)
                 .toList();
-        log.debug("Knowledge bases listed. tenantId={}, userId={}, count={}",
+        log.debug("知识库列表查询完成。tenantId={}, userId={}, count={}",
                 user.getTenantId(), user.getId(), result.size());
         return result;
     }
@@ -91,11 +91,11 @@ public class KnowledgeBaseService {
         KnowledgeBase kb = requireAccess(id);
         UserAccount user = CurrentUser.required();
         if (!canManageKnowledgeBase(kb, user)) {
-            throw new ForbiddenException("Only owner, admin or knowledge base manager can update knowledge base");
+            throw new ForbiddenException("只有负责人、平台管理员或知识库管理员可以修改知识库");
         }
         apply(kb, request);
         knowledgeBaseMapper.updateById(kb);
-        log.info("Knowledge base updated. tenantId={}, userId={}, knowledgeBaseId={}",
+        log.info("知识库已更新。tenantId={}, userId={}, knowledgeBaseId={}",
                 kb.getTenantId(), user.getId(), kb.getId());
         return toResponse(kb);
     }
@@ -105,11 +105,11 @@ public class KnowledgeBaseService {
         KnowledgeBase kb = requireAccess(id);
         UserAccount user = CurrentUser.required();
         if (!isOwnerOrAdmin(kb, user)) {
-            throw new ForbiddenException("Only owner or admin can delete knowledge base");
+            throw new ForbiddenException("只有负责人或平台管理员可以删除知识库");
         }
         kb.setDeleted(true);
         knowledgeBaseMapper.updateById(kb);
-        log.info("Knowledge base deleted. tenantId={}, userId={}, knowledgeBaseId={}",
+        log.info("知识库已删除。tenantId={}, userId={}, knowledgeBaseId={}",
                 kb.getTenantId(), user.getId(), kb.getId());
     }
 
@@ -120,10 +120,10 @@ public class KnowledgeBaseService {
         UserAccount user = CurrentUser.required();
         KnowledgeBase kb = knowledgeBaseMapper.selectByIdAndTenantIdNotDeleted(id, user.getTenantId());
         if (kb == null) {
-            throw new NotFoundException("Knowledge base not found");
+            throw new NotFoundException("知识库不存在");
         }
         if (!canAccess(kb, user)) {
-            throw new ForbiddenException("No access to knowledge base");
+            throw new ForbiddenException("没有访问该知识库的权限");
         }
         return kb;
     }
@@ -138,7 +138,7 @@ public class KnowledgeBaseService {
         KnowledgeBase kb = requireAccess(id);
         UserAccount user = CurrentUser.required();
         if (!canManageKnowledgeBase(kb, user)) {
-            throw new ForbiddenException("Only owner, admin or knowledge base manager can manage knowledge base");
+            throw new ForbiddenException("只有负责人、平台管理员或知识库管理员可以管理该知识库");
         }
         return kb;
     }
@@ -150,7 +150,7 @@ public class KnowledgeBaseService {
         KnowledgeBase kb = requireAccess(id);
         UserAccount user = CurrentUser.required();
         if (!canManageContent(kb, user)) {
-            throw new ForbiddenException("Only editor, manager, owner or admin can manage knowledge base content");
+            throw new ForbiddenException("只有资料维护成员、知识库管理员、负责人或平台管理员可以维护知识库内容");
         }
         return kb;
     }
@@ -178,17 +178,17 @@ public class KnowledgeBaseService {
         Long userId = Ids.parse(request.userId(), "userId");
         UserAccount targetUser = userMapper.selectById(userId);
         if (targetUser == null || !targetUser.getTenantId().equals(kb.getTenantId())) {
-            throw new NotFoundException("User not found");
+            throw new NotFoundException("用户不存在");
         }
         targetUser.setRoles(new HashSet<>(userMapper.selectRolesByUserId(targetUser.getId())));
         if (targetUser.getId().equals(kb.getOwnerId())) {
-            throw new BadRequestException("Owner already has full access");
+            throw new BadRequestException("知识库负责人已经拥有完整权限");
         }
         if (isAdmin(targetUser)) {
-            throw new BadRequestException("ADMIN already has platform-level access and does not need knowledge base member authorization");
+            throw new BadRequestException("ADMIN 已拥有平台级权限，不需要单独分配知识库成员权限");
         }
         if (request.permission() == KbPermission.OWNER) {
-            throw new BadRequestException("OWNER permission cannot be assigned manually");
+            throw new BadRequestException("OWNER 权限不能手动分配");
         }
 
         KnowledgeBaseMember member = memberMapper.selectByKnowledgeBaseIdAndUserId(kb.getId(), userId);
@@ -198,12 +198,12 @@ public class KnowledgeBaseService {
             member.setUserId(userId);
             member.setPermission(request.permission());
             memberMapper.insert(member);
-            log.info("Knowledge base member added. knowledgeBaseId={}, userId={}, permission={}",
+            log.info("知识库成员已添加。knowledgeBaseId={}, userId={}, permission={}",
                     kb.getId(), userId, request.permission());
         } else {
             member.setPermission(request.permission());
             memberMapper.updateById(member);
-            log.info("Knowledge base member updated. knowledgeBaseId={}, userId={}, permission={}",
+            log.info("知识库成员权限已更新。knowledgeBaseId={}, userId={}, permission={}",
                     kb.getId(), userId, request.permission());
         }
         return toMemberResponse(member);
@@ -213,13 +213,13 @@ public class KnowledgeBaseService {
     public void removeMember(Long knowledgeBaseId, Long userId) {
         KnowledgeBase kb = requireManageAccess(knowledgeBaseId);
         if (kb.getOwnerId().equals(userId)) {
-            throw new BadRequestException("Owner access cannot be removed");
+            throw new BadRequestException("不能移除知识库负责人的权限");
         }
         int deleted = memberMapper.deleteByKnowledgeBaseIdAndUserId(kb.getId(), userId);
         if (deleted == 0) {
-            throw new NotFoundException("Knowledge base member not found");
+            throw new NotFoundException("知识库成员不存在");
         }
-        log.info("Knowledge base member removed. knowledgeBaseId={}, userId={}", kb.getId(), userId);
+        log.info("知识库成员已移除。knowledgeBaseId={}, userId={}", kb.getId(), userId);
     }
 
     private boolean canAccess(KnowledgeBase kb, UserAccount user) {
@@ -301,8 +301,11 @@ public class KnowledgeBaseService {
         if (request.topK() != null) {
             kb.setTopK(request.topK());
         }
+        if (request.minScore() != null) {
+            kb.setMinScore(request.minScore());
+        }
         if (kb.getChunkOverlap() >= kb.getChunkSize()) {
-            throw new BadRequestException("chunkOverlap must be smaller than chunkSize");
+            throw new BadRequestException("chunkOverlap 必须小于 chunkSize");
         }
     }
 
@@ -318,6 +321,7 @@ public class KnowledgeBaseService {
                 kb.getChunkSize(),
                 kb.getChunkOverlap(),
                 kb.getTopK(),
+                kb.getMinScore(),
                 kb.getCreatedAt(),
                 canManageContent || canManageKnowledgeBase || canDelete,
                 effectivePermission(kb, user),

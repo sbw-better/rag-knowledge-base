@@ -7,6 +7,7 @@ import io.minio.GetObjectArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import io.minio.RemoveObjectArgs;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -36,9 +37,9 @@ public class StorageService {
         boolean exists = minioClient.bucketExists(BucketExistsArgs.builder().bucket(properties.storage().bucket()).build());
         if (!exists) {
             minioClient.makeBucket(MakeBucketArgs.builder().bucket(properties.storage().bucket()).build());
-            log.info("MinIO bucket created. bucket={}", properties.storage().bucket());
+            log.info("MinIO 存储桶已创建。bucket={}", properties.storage().bucket());
         } else {
-            log.debug("MinIO bucket already exists. bucket={}", properties.storage().bucket());
+            log.debug("MinIO 存储桶已存在。bucket={}", properties.storage().bucket());
         }
     }
 
@@ -54,13 +55,13 @@ public class StorageService {
                     .contentType(file.getContentType())
                     .stream(inputStream, file.getSize(), -1)
                     .build());
-            log.info("File stored to MinIO. bucket={}, objectKey={}, sizeBytes={}",
+            log.info("文件已保存到 MinIO。bucket={}, objectKey={}, sizeBytes={}",
                     properties.storage().bucket(), objectKey, file.getSize());
             return objectKey;
         } catch (Exception ex) {
-            log.warn("Failed to store file to MinIO. bucket={}, objectKey={}",
+            log.warn("文件保存到 MinIO 失败。bucket={}, objectKey={}",
                     properties.storage().bucket(), objectKey);
-            throw new BadRequestException("Failed to store file: " + ex.getMessage());
+            throw new BadRequestException("文件保存失败：" + ex.getMessage());
         }
     }
 
@@ -74,7 +75,28 @@ public class StorageService {
                     .object(objectKey)
                     .build());
         } catch (Exception ex) {
-            throw new BadRequestException("Failed to read stored file: " + ex.getMessage());
+            throw new BadRequestException("读取已上传文件失败：" + ex.getMessage());
+        }
+    }
+
+    /**
+     * 尽力删除对象存储中的原始文件。
+     *
+     * <p>文档删除以数据库和向量索引为准，MinIO 删除失败不会阻断主流程，只记录日志便于后续清理。</p>
+     */
+    public void deleteQuietly(String objectKey) {
+        if (objectKey == null || objectKey.isBlank() || "pending".equals(objectKey)) {
+            return;
+        }
+        try {
+            minioClient.removeObject(RemoveObjectArgs.builder()
+                    .bucket(properties.storage().bucket())
+                    .object(objectKey)
+                    .build());
+            log.info("MinIO 原始文件已删除。bucket={}, objectKey={}", properties.storage().bucket(), objectKey);
+        } catch (Exception ex) {
+            log.warn("MinIO 原始文件删除失败。bucket={}, objectKey={}, error={}",
+                    properties.storage().bucket(), objectKey, ex.getMessage());
         }
     }
 }

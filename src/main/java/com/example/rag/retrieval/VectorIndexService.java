@@ -4,6 +4,7 @@ import com.example.rag.domain.DocumentChunk;
 import com.example.rag.domain.DocumentEntity;
 import com.example.rag.mapper.ChunkSearchRow;
 import com.example.rag.mapper.DocumentChunkMapper;
+import com.example.rag.mapper.MessageCitationMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -23,24 +24,31 @@ public class VectorIndexService {
     private static final Logger log = LoggerFactory.getLogger(VectorIndexService.class);
 
     private final DocumentChunkMapper chunkMapper;
+    private final MessageCitationMapper citationMapper;
     private final MilvusVectorStore milvusVectorStore;
 
-    public VectorIndexService(DocumentChunkMapper chunkMapper, MilvusVectorStore milvusVectorStore) {
+    public VectorIndexService(DocumentChunkMapper chunkMapper,
+                              MessageCitationMapper citationMapper,
+                              MilvusVectorStore milvusVectorStore) {
         this.chunkMapper = chunkMapper;
+        this.citationMapper = citationMapper;
         this.milvusVectorStore = milvusVectorStore;
     }
 
     /**
      * 删除某个文档已有的切片和向量索引。
      *
-     * <p>重入库或重新构建索引前先调用该方法，避免同一文档产生重复 chunk。
+     * <p>重入库或重新构建索引前先调用该方法，避免同一文档产生重复 chunk。历史问答的引用来源
+     * 会通过 {@code message_citations.chunk_id} 指向旧切片，因此必须先删除引用记录，再删除 chunk。
      * 当前 MySQL 是主事实库，Milvus 删除失败会抛出异常，让任务进入重试流程。</p>
      */
     @Transactional
     public void deleteByDocument(Long documentId) {
+        int deletedCitations = citationMapper.deleteByDocumentId(documentId);
         milvusVectorStore.deleteByDocument(documentId);
         int deleted = chunkMapper.deleteByDocumentId(documentId);
-        log.debug("Deleted existing chunks before reindex. documentId={}, mysqlRows={}", documentId, deleted);
+        log.debug("重建索引前已删除文档旧引用和旧切片。documentId={}, citationRows={}, chunkRows={}",
+                documentId, deletedCitations, deleted);
     }
 
     /**
@@ -51,12 +59,12 @@ public class VectorIndexService {
      */
     public void deleteVectorIndexByKnowledgeBase(Long knowledgeBaseId) {
         milvusVectorStore.deleteByKnowledgeBase(knowledgeBaseId);
-        log.info("Deleted Milvus vectors for knowledge base. knowledgeBaseId={}", knowledgeBaseId);
+        log.info("已删除知识库在 Milvus 中的向量索引。knowledgeBaseId={}", knowledgeBaseId);
     }
 
     public void upsertExistingChunk(DocumentEntity document, DocumentChunk chunk, List<Double> embedding) {
         milvusVectorStore.upsertChunk(document, chunk, embedding);
-        log.debug("Existing chunk vector rebuilt. documentId={}, chunkId={}, chunkIndex={}, embeddingDimensions={}",
+        log.debug("已有切片向量已重建。documentId={}, chunkId={}, chunkIndex={}, embeddingDimensions={}",
                 document.getId(), chunk.getId(), chunk.getChunkIndex(), embedding.size());
     }
 
@@ -78,7 +86,7 @@ public class VectorIndexService {
         chunkMapper.insert(chunk);
 
         milvusVectorStore.upsertChunk(document, chunk, embedding);
-        log.debug("Chunk indexed. documentId={}, chunkId={}, chunkIndex={}, embeddingDimensions={}",
+        log.debug("切片已写入索引。documentId={}, chunkId={}, chunkIndex={}, embeddingDimensions={}",
                 document.getId(), chunk.getId(), index, embedding.size());
     }
 
@@ -93,7 +101,7 @@ public class VectorIndexService {
         List<SearchCandidate> hits = milvusVectorStore.vectorSearch(tenantId, knowledgeBaseId, embedding, topK).stream()
                 .map(this::normalizeVectorHit)
                 .toList();
-        log.debug("Vector search completed. tenantId={}, knowledgeBaseId={}, topK={}, hits={}",
+        log.debug("向量检索完成。tenantId={}, knowledgeBaseId={}, topK={}, hits={}",
                 tenantId, knowledgeBaseId, topK, hits.size());
         return hits;
     }
@@ -101,7 +109,7 @@ public class VectorIndexService {
     private SearchCandidate normalizeVectorHit(SearchCandidate hit) {
         DocumentChunk chunk = chunkMapper.selectChunkById(hit.chunkId());
         if (chunk == null) {
-            log.warn("Vector hit chunk not found in MySQL. chunkId={}, documentId={}", hit.chunkId(), hit.documentId());
+            log.warn("向量检索命中的切片在 MySQL 中不存在。chunkId={}, documentId={}", hit.chunkId(), hit.documentId());
             return hit;
         }
         return new SearchCandidate(
@@ -127,7 +135,7 @@ public class VectorIndexService {
                 .stream()
                 .map(VectorIndexService::toCandidate)
                 .toList();
-        log.debug("Keyword search completed. tenantId={}, knowledgeBaseId={}, topK={}, hits={}",
+        log.debug("关键词检索完成。tenantId={}, knowledgeBaseId={}, topK={}, hits={}",
                 tenantId, knowledgeBaseId, topK, hits.size());
         return hits;
     }

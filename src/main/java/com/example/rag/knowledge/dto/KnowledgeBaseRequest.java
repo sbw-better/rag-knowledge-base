@@ -3,6 +3,8 @@ package com.example.rag.knowledge.dto;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -16,6 +18,7 @@ public record KnowledgeBaseRequest(
         @Size(max = 2000) String description,
         @Min(200) @Max(4000) Integer chunkSize,
         @Min(0) @Max(1000) Integer chunkOverlap,
-        @Min(1) @Max(50) Integer topK
+        @Min(1) @Max(50) Integer topK,
+        @DecimalMin("0.0") @DecimalMax("1.0") Double minScore
 ) {
 }

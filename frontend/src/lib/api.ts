@@ -8,6 +8,8 @@ import type {
   ChatStreamError,
   ChatStreamMeta,
   ConversationResponse,
+  ConversationSummaryResponse,
+  DocumentChunkResponse,
   DocumentItem,
   DocumentResponse,
   KnowledgeBaseRequest,
@@ -295,6 +297,19 @@ export const api = {
     return apiClient.get<unknown, DocumentResponse>(`/documents/${id}`);
   },
 
+  async listDocumentChunks(id: string) {
+    const data = await apiClient.get<unknown, unknown>(`/documents/${id}/chunks`);
+    return normalizeArray<DocumentChunkResponse>(data, "文档切片列表");
+  },
+
+  reingestDocument(id: string) {
+    return apiClient.post<unknown, TaskResponse>(`/documents/${id}/reingest`);
+  },
+
+  deleteDocument(id: string) {
+    return apiClient.delete<unknown, null>(`/documents/${id}`);
+  },
+
   getTask(id: string) {
     return apiClient.get<unknown, TaskResponse>(`/tasks/${id}`);
   },
@@ -371,5 +386,18 @@ export const api = {
 
   getLatestConversation(knowledgeBaseId: string) {
     return apiClient.get<unknown, ConversationResponse | null>("/conversations/latest", { params: { knowledgeBaseId } });
+  },
+
+  async listConversations(knowledgeBaseId: string) {
+    const data = await apiClient.get<unknown, unknown>("/conversations", { params: { knowledgeBaseId } });
+    return normalizeArray<ConversationSummaryResponse>(data, "会话列表");
+  },
+
+  renameConversation(id: string, title: string) {
+    return apiClient.patch<unknown, ConversationSummaryResponse>(`/conversations/${id}`, { title });
+  },
+
+  deleteConversation(id: string) {
+    return apiClient.delete<unknown, null>(`/conversations/${id}`);
   }
 };

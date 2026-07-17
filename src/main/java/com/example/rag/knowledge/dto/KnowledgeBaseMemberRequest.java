@@ -8,9 +8,9 @@ import jakarta.validation.constraints.NotNull;
  * 知识库成员授权请求。
  */
 public record KnowledgeBaseMemberRequest(
-        @NotBlank(message = "userId is required")
+        @NotBlank(message = "userId 不能为空")
         String userId,
-        @NotNull(message = "permission is required")
+        @NotNull(message = "permission 不能为空")
         KbPermission permission
 ) {
 }

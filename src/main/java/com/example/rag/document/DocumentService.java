@@ -5,6 +5,7 @@ import com.example.rag.common.BadRequestException;
 import com.example.rag.common.NotFoundException;
 import com.example.rag.config.AppProperties;
 import com.example.rag.domain.DocumentEntity;
+import com.example.rag.domain.DocumentChunk;
 import com.example.rag.domain.DocumentStatus;
 import com.example.rag.domain.KnowledgeBase;
 import com.example.rag.domain.RagTask;
@@ -12,12 +13,16 @@ import com.example.rag.domain.TaskStatus;
 import com.example.rag.domain.TaskType;
 import com.example.rag.domain.UserAccount;
 import com.example.rag.document.dto.DocumentItem;
+import com.example.rag.document.dto.DocumentChunkResponse;
 import com.example.rag.document.dto.DocumentResponse;
 import com.example.rag.document.dto.TaskResponse;
 import com.example.rag.document.dto.UploadResponse;
 import com.example.rag.knowledge.KnowledgeBaseService;
+import com.example.rag.mapper.DocumentChunkMapper;
 import com.example.rag.mapper.DocumentMapper;
+import com.example.rag.mapper.MessageCitationMapper;
 import com.example.rag.mapper.RagTaskMapper;
+import com.example.rag.retrieval.VectorIndexService;
 import com.example.rag.storage.StorageService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,30 +46,43 @@ public class DocumentService {
     private static final Logger log = LoggerFactory.getLogger(DocumentService.class);
     private static final Pattern UNSAFE_FILE_CHARS = Pattern.compile("[\\\\/:*?\"<>|\\p{Cntrl}]+");
 
-    public DocumentService(KnowledgeBaseService knowledgeBaseService, DocumentMapper documentMapper, RagTaskMapper taskMapper, StorageService storageService, AppProperties properties) {
+    public DocumentService(KnowledgeBaseService knowledgeBaseService,
+                           DocumentMapper documentMapper,
+                           DocumentChunkMapper chunkMapper,
+                           RagTaskMapper taskMapper,
+                           MessageCitationMapper citationMapper,
+                           VectorIndexService vectorIndexService,
+                           StorageService storageService,
+                           AppProperties properties) {
         this.knowledgeBaseService = knowledgeBaseService;
         this.documentMapper = documentMapper;
+        this.chunkMapper = chunkMapper;
         this.taskMapper = taskMapper;
+        this.citationMapper = citationMapper;
+        this.vectorIndexService = vectorIndexService;
         this.storageService = storageService;
         this.properties = properties;
     }
 
     private final KnowledgeBaseService knowledgeBaseService;
     private final DocumentMapper documentMapper;
+    private final DocumentChunkMapper chunkMapper;
     private final RagTaskMapper taskMapper;
+    private final MessageCitationMapper citationMapper;
+    private final VectorIndexService vectorIndexService;
     private final StorageService storageService;
     private final AppProperties properties;
 
     @Transactional
     public UploadResponse upload(Long knowledgeBaseId, MultipartFile file) {
         if (file == null || file.isEmpty()) {
-            throw new BadRequestException("File is required");
+            throw new BadRequestException("请选择要上传的文件");
         }
         String safeFileName = sanitizeFileName(file.getOriginalFilename());
         validateFile(safeFileName);
         UserAccount user = CurrentUser.required();
         KnowledgeBase kb = knowledgeBaseService.requireContentManageAccess(knowledgeBaseId);
-        log.info("Document upload requested. tenantId={}, userId={}, knowledgeBaseId={}, fileName={}, sizeBytes={}",
+        log.info("收到文档上传请求。tenantId={}, userId={}, knowledgeBaseId={}, fileName={}, sizeBytes={}",
                 user.getTenantId(), user.getId(), knowledgeBaseId, safeFileName, file.getSize());
 
         DocumentEntity document = new DocumentEntity();
@@ -88,7 +106,7 @@ public class DocumentService {
         task.setStatus(TaskStatus.PENDING);
         task.setMaxAttempts(properties.ingestion().maxAttempts());
         taskMapper.insert(task);
-        log.info("Document upload accepted. documentId={}, taskId={}, objectKey={}",
+        log.info("文档上传已受理，已创建入库任务。documentId={}, taskId={}, objectKey={}",
                 document.getId(), task.getId(), document.getObjectKey());
         return new UploadResponse(toResponse(document), toResponse(task));
     }
@@ -100,7 +118,7 @@ public class DocumentService {
         UserAccount user = CurrentUser.required();
         DocumentEntity document = documentMapper.selectByIdAndTenantId(id, user.getTenantId());
         if (document == null) {
-            throw new NotFoundException("Document not found");
+            throw new NotFoundException("文档不存在");
         }
         knowledgeBaseService.requireAccess(document.getKnowledgeBaseId());
         return toResponse(document);
@@ -115,7 +133,7 @@ public class DocumentService {
                         toResponse(document),
                         toResponseOrNull(taskMapper.selectLatestByDocumentId(document.getId()))))
                 .toList();
-        log.debug("Listed documents. tenantId={}, userId={}, knowledgeBaseId={}, count={}",
+        log.debug("查询知识库文档列表完成。tenantId={}, userId={}, knowledgeBaseId={}, count={}",
                 user.getTenantId(), user.getId(), knowledgeBaseId, documents.size());
         return documents;
     }
@@ -124,9 +142,71 @@ public class DocumentService {
         UserAccount user = CurrentUser.required();
         RagTask task = taskMapper.selectByIdAndTenantId(id, user.getTenantId());
         if (task == null) {
-            throw new NotFoundException("Task not found");
+            throw new NotFoundException("任务不存在");
         }
         return toResponse(task);
+    }
+
+    /**
+     * 查看某个文档解析后的切片列表。
+     *
+     * <p>切片内容属于知识库维护信息，只允许具备内容维护权限的用户查看。</p>
+     */
+    public List<DocumentChunkResponse> listChunks(Long id) {
+        DocumentEntity document = requireDocument(id);
+        knowledgeBaseService.requireContentManageAccess(document.getKnowledgeBaseId());
+        return chunkMapper.selectByDocumentIdAndTenantId(document.getId(), document.getTenantId()).stream()
+                .map(this::toChunkResponse)
+                .toList();
+    }
+
+    /**
+     * 重新创建文档入库任务。
+     *
+     * <p>旧切片会在 Worker 真正处理任务时先清理，这样如果任务还没执行，现有可用索引仍能暂时保留。</p>
+     */
+    @Transactional
+    public TaskResponse reingest(Long id) {
+        UserAccount user = CurrentUser.required();
+        DocumentEntity document = requireDocument(id);
+        knowledgeBaseService.requireContentManageAccess(document.getKnowledgeBaseId());
+        document.setStatus(DocumentStatus.UPLOADED);
+        document.setErrorMessage(null);
+        documentMapper.updateById(document);
+
+        RagTask task = new RagTask();
+        task.setTenantId(user.getTenantId());
+        task.setDocumentId(document.getId());
+        task.setDocument(document);
+        task.setType(TaskType.INGEST_DOCUMENT);
+        task.setStatus(TaskStatus.PENDING);
+        task.setMaxAttempts(properties.ingestion().maxAttempts());
+        taskMapper.insert(task);
+        log.info("文档重新入库任务已创建。tenantId={}, userId={}, documentId={}, taskId={}",
+                user.getTenantId(), user.getId(), document.getId(), task.getId());
+        return toResponse(task);
+    }
+
+    /**
+     * 删除文档及其检索索引。
+     *
+     * <p>由于历史回答引用表带有 document/chunk 外键，删除前必须先清理引用记录，再删除
+     * Milvus 向量、MySQL 切片和文档元数据。</p>
+     */
+    @Transactional
+    public void delete(Long id) {
+        UserAccount user = CurrentUser.required();
+        DocumentEntity document = requireDocument(id);
+        knowledgeBaseService.requireContentManageAccess(document.getKnowledgeBaseId());
+        citationMapper.deleteByDocumentId(document.getId());
+        vectorIndexService.deleteByDocument(document.getId());
+        int deleted = documentMapper.deleteByIdAndTenantId(document.getId(), document.getTenantId());
+        if (deleted == 0) {
+            throw new NotFoundException("文档不存在");
+        }
+        storageService.deleteQuietly(document.getObjectKey());
+        log.info("文档已删除。tenantId={}, userId={}, knowledgeBaseId={}, documentId={}",
+                user.getTenantId(), user.getId(), document.getKnowledgeBaseId(), document.getId());
     }
 
     public DocumentResponse toResponse(DocumentEntity document) {
@@ -153,8 +233,27 @@ public class DocumentService {
                 task.getFinishedAt());
     }
 
+    private DocumentChunkResponse toChunkResponse(DocumentChunk chunk) {
+        return new DocumentChunkResponse(
+                chunk.getId().toString(),
+                chunk.getDocumentId().toString(),
+                chunk.getChunkIndex(),
+                chunk.getContent(),
+                chunk.getMetadataJson(),
+                chunk.getCreatedAt());
+    }
+
     private TaskResponse toResponseOrNull(RagTask task) {
         return task == null ? null : toResponse(task);
+    }
+
+    private DocumentEntity requireDocument(Long id) {
+        UserAccount user = CurrentUser.required();
+        DocumentEntity document = documentMapper.selectByIdAndTenantId(id, user.getTenantId());
+        if (document == null) {
+            throw new NotFoundException("文档不存在");
+        }
+        return document;
     }
 
     private void validateFile(String fileName) {
@@ -162,7 +261,7 @@ public class DocumentService {
         if (!(name.endsWith(".pdf") || name.endsWith(".docx") || name.endsWith(".txt")
                 || name.endsWith(".md") || name.endsWith(".markdown") || name.endsWith(".html")
                 || name.endsWith(".htm"))) {
-            throw new BadRequestException("Unsupported file type");
+            throw new BadRequestException("不支持的文件类型");
         }
     }
 

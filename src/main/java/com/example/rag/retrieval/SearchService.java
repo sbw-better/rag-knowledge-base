@@ -45,7 +45,7 @@ public class SearchService {
         int topK = request.topK() == null ? kb.getTopK() : request.topK();
         long startedAt = System.nanoTime();
         List<SearchCandidate> hits = searchInternal(kb, request.query(), request.mode(), topK);
-        log.info("Search completed. tenantId={}, knowledgeBaseId={}, mode={}, topK={}, hits={}, costMs={}",
+        log.info("检索完成。tenantId={}, knowledgeBaseId={}, mode={}, topK={}, hits={}, costMs={}",
                 kb.getTenantId(), kb.getId(), request.mode(), topK, hits.size(), elapsedMs(startedAt));
         return new SearchResponse(hits.stream().map(SearchService::toHit).toList());
     }
@@ -60,14 +60,29 @@ public class SearchService {
         Long tenantId = kb.getTenantId();
         Long kbId = kb.getId();
         if (safeMode == SearchMode.VECTOR) {
-            return vectorIndexService.vectorSearch(tenantId, kbId, embeddingClient.embed(query), topK);
+            return applyMinScore(kb, vectorIndexService.vectorSearch(tenantId, kbId, embeddingClient.embed(query), topK), topK);
         }
         if (safeMode == SearchMode.KEYWORD) {
-            return vectorIndexService.keywordSearch(tenantId, kbId, query, topK);
+            return applyMinScore(kb, vectorIndexService.keywordSearch(tenantId, kbId, query, topK), topK);
         }
-        List<SearchCandidate> vector = vectorIndexService.vectorSearch(tenantId, kbId, embeddingClient.embed(query), topK * 3);
-        List<SearchCandidate> keyword = vectorIndexService.keywordSearch(tenantId, kbId, query, topK * 3);
+        List<SearchCandidate> vector = filterByMinScore(kb, vectorIndexService.vectorSearch(tenantId, kbId, embeddingClient.embed(query), topK * 3));
+        List<SearchCandidate> keyword = filterByMinScore(kb, vectorIndexService.keywordSearch(tenantId, kbId, query, topK * 3));
         return fusionService.fuse(vector, keyword, topK);
+    }
+
+    private static List<SearchCandidate> applyMinScore(KnowledgeBase kb, List<SearchCandidate> hits, int topK) {
+        return filterByMinScore(kb, hits).stream()
+                .limit(topK)
+                .toList();
+    }
+
+    private static List<SearchCandidate> filterByMinScore(KnowledgeBase kb, List<SearchCandidate> hits) {
+        if (kb.getMinScore() <= 0) {
+            return hits;
+        }
+        return hits.stream()
+                .filter(hit -> hit.score() >= kb.getMinScore())
+                .toList();
     }
 
     private static long elapsedMs(long startedAt) {

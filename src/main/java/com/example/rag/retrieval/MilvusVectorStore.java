@@ -60,7 +60,7 @@ public class MilvusVectorStore {
                     .body(String.class);
             JsonNode has = objectMapper.readTree(hasJson);
             if (has.path("data").asBoolean(false)) {
-                log.debug("Milvus collection already exists. collection={}", collection());
+                log.debug("Milvus collection 已存在。collection={}", collection());
                 return;
             }
 
@@ -74,12 +74,12 @@ public class MilvusVectorStore {
                     .body(createBody)
                     .retrieve()
                     .toBodilessEntity();
-            log.info("Milvus collection created. collection={}, dimensions={}",
+            log.info("Milvus collection 已创建。collection={}, dimensions={}",
                     collection(), properties.model().embeddingDimensions());
         } catch (Exception ex) {
-            log.warn("Milvus collection initialization failed. endpoint={}, collection={}",
+            log.warn("Milvus collection 初始化失败。endpoint={}, collection={}",
                     properties.milvus().endpoint(), collection(), ex);
-            throw new IllegalStateException("Milvus collection initialization failed: " + ex.getMessage(), ex);
+            throw new IllegalStateException("Milvus collection 初始化失败：" + ex.getMessage(), ex);
         }
     }
 
@@ -176,7 +176,7 @@ public class MilvusVectorStore {
             }
             return hits;
         } catch (Exception ex) {
-            throw new IllegalStateException("Failed to parse Milvus search response", ex);
+            throw new IllegalStateException("解析 Milvus 检索结果失败", ex);
         }
     }
 

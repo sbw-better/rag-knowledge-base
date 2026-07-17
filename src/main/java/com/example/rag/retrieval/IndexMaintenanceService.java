@@ -60,7 +60,7 @@ public class IndexMaintenanceService {
         for (DocumentChunk chunk : chunks) {
             DocumentEntity document = documentCache.computeIfAbsent(chunk.getDocumentId(), documentMapper::selectById);
             if (document == null) {
-                log.warn("Skip chunk because document is missing. chunkId={}, documentId={}",
+                log.warn("跳过切片重建，因为关联文档不存在。chunkId={}, documentId={}",
                         chunk.getId(), chunk.getDocumentId());
                 continue;
             }
@@ -68,7 +68,7 @@ public class IndexMaintenanceService {
             rebuilt++;
         }
 
-        log.info("Knowledge base vector index rebuilt. knowledgeBaseId={}, chunks={}, rebuilt={}",
+        log.info("知识库向量索引重建完成。knowledgeBaseId={}, chunks={}, rebuilt={}",
                 kb.getId(), chunks.size(), rebuilt);
         return new RebuildIndexResponse(kb.getId().toString(), chunks.size(), rebuilt);
     }

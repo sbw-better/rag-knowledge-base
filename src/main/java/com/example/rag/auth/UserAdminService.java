@@ -35,7 +35,7 @@ public class UserAdminService {
     public List<AdminUserResponse> listUsers() {
         UserAccount current = CurrentUser.required();
         if (!isAdmin(current)) {
-            throw new ForbiddenException("Only admin can list users");
+            throw new ForbiddenException("只有平台管理员可以查看用户列表");
         }
         return userMapper.selectByTenantId(current.getTenantId()).stream()
                 .peek(user -> user.setRoles(new HashSet<>(userMapper.selectRolesByUserId(user.getId()))))
@@ -47,11 +47,11 @@ public class UserAdminService {
     public AdminUserResponse updateRoles(Long userId, UpdateUserRolesRequest request) {
         UserAccount current = CurrentUser.required();
         if (!isAdmin(current)) {
-            throw new ForbiddenException("Only admin can update user roles");
+            throw new ForbiddenException("只有平台管理员可以修改用户角色");
         }
         UserAccount target = userMapper.selectById(userId);
         if (target == null || !target.getTenantId().equals(current.getTenantId())) {
-            throw new NotFoundException("User not found");
+            throw new NotFoundException("用户不存在");
         }
 
         Set<String> names = new LinkedHashSet<>(request.roles().stream()
@@ -60,7 +60,7 @@ public class UserAdminService {
                 .toList());
         names.add("USER");
         if (current.getId().equals(target.getId()) && !names.contains("ADMIN")) {
-            throw new BadRequestException("Cannot remove ADMIN role from current user");
+            throw new BadRequestException("不能移除当前登录用户自己的 ADMIN 角色");
         }
 
         List<Role> roles = names.stream().map(this::requiredRole).toList();
@@ -75,7 +75,7 @@ public class UserAdminService {
     private Role requiredRole(String name) {
         Role role = roleMapper.selectByName(name);
         if (role == null) {
-            throw new BadRequestException("Unsupported role: " + name);
+            throw new BadRequestException("不支持的角色：" + name);
         }
         return role;
     }

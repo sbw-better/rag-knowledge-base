@@ -1,13 +1,20 @@
 package com.example.rag.chat;
 
 import com.example.rag.common.ApiResponse;
+import com.example.rag.chat.dto.ConversationSummaryResponse;
 import com.example.rag.chat.dto.ConversationResponse;
+import com.example.rag.chat.dto.ConversationUpdateRequest;
+import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 
 /**
  * 会话历史查询接口。
@@ -35,11 +42,29 @@ public class ConversationController {
         return ApiResponse.ok(chatService.getLatestConversation(knowledgeBaseId));
     }
 
+    @GetMapping
+    ApiResponse<List<ConversationSummaryResponse>> list(@RequestParam Long knowledgeBaseId) {
+        return ApiResponse.ok(chatService.listConversations(knowledgeBaseId));
+    }
+
     /**
      * 查询指定会话详情。
      */
     @GetMapping("/{id}")
     ApiResponse<ConversationResponse> get(@PathVariable Long id) {
         return ApiResponse.ok(chatService.getConversation(id));
+    }
+
+    @PatchMapping("/{id}")
+    ApiResponse<ConversationSummaryResponse> rename(
+            @PathVariable Long id,
+            @Valid @RequestBody ConversationUpdateRequest request) {
+        return ApiResponse.ok(chatService.renameConversation(id, request));
+    }
+
+    @DeleteMapping("/{id}")
+    ApiResponse<Void> delete(@PathVariable Long id) {
+        chatService.deleteConversation(id);
+        return ApiResponse.ok(null);
     }
 }

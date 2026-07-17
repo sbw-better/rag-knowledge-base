@@ -16,6 +16,8 @@ import com.example.rag.chat.dto.ChatAnswerStatus;
 import com.example.rag.chat.dto.ChatResponse;
 import com.example.rag.chat.dto.Citation;
 import com.example.rag.chat.dto.ConversationResponse;
+import com.example.rag.chat.dto.ConversationSummaryResponse;
+import com.example.rag.chat.dto.ConversationUpdateRequest;
 import com.example.rag.chat.dto.MessageItem;
 import com.example.rag.knowledge.KnowledgeBaseService;
 import com.example.rag.mapper.ConversationMapper;
@@ -117,7 +119,7 @@ public class ChatService {
 
         conversation.setUpdatedAt(Instant.now());
         conversationMapper.updateById(conversation);
-        log.info("Chat completed. tenantId={}, userId={}, knowledgeBaseId={}, conversationId={}, status={}, hits={}, citations={}, costMs={}",
+        log.info("问答完成。tenantId={}, userId={}, knowledgeBaseId={}, conversationId={}, status={}, hits={}, citations={}, costMs={}",
                 user.getTenantId(), user.getId(), kb.getId(), conversation.getId(),
                 answerStatus, hits.size(), citations.size(), elapsedMs(startedAt));
         return new ChatResponse(
@@ -213,7 +215,7 @@ public class ChatService {
         List<Citation> citations = answerStatus == ChatAnswerStatus.ANSWERED ? saveCitations(assistantMessage, prepared.hits()) : List.of();
         prepared.conversation().setUpdatedAt(Instant.now());
         conversationMapper.updateById(prepared.conversation());
-        log.info("Chat stream completed. tenantId={}, userId={}, knowledgeBaseId={}, conversationId={}, status={}, hits={}, citations={}, costMs={}",
+        log.info("流式问答完成。tenantId={}, userId={}, knowledgeBaseId={}, conversationId={}, status={}, hits={}, citations={}, costMs={}",
                 prepared.user().getTenantId(), prepared.user().getId(), prepared.kb().getId(), prepared.conversation().getId(),
                 answerStatus, prepared.hits().size(), citations.size(), elapsedMs(prepared.startedAt()));
         return new ChatResponse(
@@ -229,12 +231,12 @@ public class ChatService {
         try {
             emitter.send(SseEmitter.event().name(name).data(data));
         } catch (IOException | IllegalStateException ex) {
-            throw new ChatStreamException("SSE send failed", ex);
+            throw new ChatStreamException("SSE 消息发送失败", ex);
         }
     }
 
     private void completeStreamWithError(SseEmitter emitter, Exception ex) {
-        log.warn("Chat stream failed. error={}", ex.getMessage());
+        log.warn("流式问答失败。error={}", ex.getMessage());
         try {
             sendEvent(emitter, "error", Map.of("message", ex.getMessage() == null ? "流式问答失败" : ex.getMessage()));
             emitter.complete();
@@ -253,7 +255,7 @@ public class ChatService {
         MessageEntity assistantMessage = saveMessage(conversation, MessageRole.ASSISTANT, answer, null);
         conversation.setUpdatedAt(Instant.now());
         conversationMapper.updateById(conversation);
-        log.info("Chat completed without model. tenantId={}, userId={}, knowledgeBaseId={}, conversationId={}, status={}, costMs={}",
+        log.info("问答未调用模型即完成。tenantId={}, userId={}, knowledgeBaseId={}, conversationId={}, status={}, costMs={}",
                 user.getTenantId(), user.getId(), kb.getId(), conversation.getId(), status, elapsedMs(startedAt));
         return new ChatResponse(
                 conversation.getId().toString(),
@@ -268,7 +270,43 @@ public class ChatService {
     public ConversationResponse getConversation(Long id) {
         UserAccount user = CurrentUser.required();
         Conversation conversation = loadConversation(user, id);
+        knowledgeBaseService.requireAccess(conversation.getKnowledgeBaseId());
         return toConversationResponse(conversation);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ConversationSummaryResponse> listConversations(Long knowledgeBaseId) {
+        UserAccount user = CurrentUser.required();
+        KnowledgeBase kb = knowledgeBaseService.requireAccess(knowledgeBaseId);
+        return conversationMapper.selectByKnowledgeBaseId(user.getTenantId(), user.getId(), kb.getId(), 50)
+                .stream()
+                .map(this::toConversationSummary)
+                .toList();
+    }
+
+    @Transactional
+    public ConversationSummaryResponse renameConversation(Long id, ConversationUpdateRequest request) {
+        UserAccount user = CurrentUser.required();
+        Conversation conversation = loadConversation(user, id);
+        knowledgeBaseService.requireAccess(conversation.getKnowledgeBaseId());
+        conversation.setTitle(request.title().trim());
+        conversation.setUpdatedAt(Instant.now());
+        conversationMapper.updateById(conversation);
+        log.info("会话已重命名。tenantId={}, userId={}, conversationId={}",
+                user.getTenantId(), user.getId(), conversation.getId());
+        return toConversationSummary(conversation);
+    }
+
+    @Transactional
+    public void deleteConversation(Long id) {
+        UserAccount user = CurrentUser.required();
+        Conversation conversation = loadConversation(user, id);
+        knowledgeBaseService.requireAccess(conversation.getKnowledgeBaseId());
+        citationMapper.deleteByConversationId(conversation.getId());
+        messageMapper.deleteByConversationId(conversation.getId());
+        conversationMapper.deleteById(conversation.getId());
+        log.info("会话已删除。tenantId={}, userId={}, conversationId={}",
+                user.getTenantId(), user.getId(), conversation.getId());
     }
 
     /**
@@ -302,11 +340,19 @@ public class ChatService {
         return new ConversationResponse(conversation.getId().toString(), conversation.getTitle(), messages);
     }
 
+    private ConversationSummaryResponse toConversationSummary(Conversation conversation) {
+        return new ConversationSummaryResponse(
+                conversation.getId().toString(),
+                conversation.getTitle(),
+                conversation.getCreatedAt(),
+                conversation.getUpdatedAt());
+    }
+
     private Conversation loadConversation(UserAccount user, Long conversationId) {
         Conversation conversation = conversationMapper.selectByIdAndTenantIdAndUserId(
                 conversationId, user.getTenantId(), user.getId());
         if (conversation == null) {
-            throw new NotFoundException("Conversation not found");
+            throw new NotFoundException("会话不存在");
         }
         return conversation;
     }
@@ -318,7 +364,7 @@ public class ChatService {
         conversation.setKnowledgeBaseId(kb.getId());
         conversation.setTitle(question.length() > 80 ? question.substring(0, 80) : question);
         conversationMapper.insert(conversation);
-        log.debug("Conversation created. conversationId={}, userId={}, knowledgeBaseId={}",
+        log.debug("会话已创建。conversationId={}, userId={}, knowledgeBaseId={}",
                 conversation.getId(), user.getId(), kb.getId());
         return conversation;
     }
@@ -339,7 +385,7 @@ public class ChatService {
             DocumentEntity document = documentMapper.selectById(hit.documentId());
             DocumentChunk chunk = chunkMapper.selectChunkById(hit.chunkId());
             if (document == null || chunk == null) {
-                log.warn("Skip missing citation target. documentId={}, chunkId={}", hit.documentId(), hit.chunkId());
+                log.warn("跳过缺失的引用目标。documentId={}, chunkId={}", hit.documentId(), hit.chunkId());
                 continue;
             }
             MessageCitation citation = new MessageCitation();
