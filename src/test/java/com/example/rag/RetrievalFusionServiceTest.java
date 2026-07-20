@@ -17,7 +17,7 @@ class RetrievalFusionServiceTest {
                 new AppProperties.Storage("http://localhost:9000", "a", "b", "bucket"),
                 new AppProperties.Milvus("http://localhost:19530", "default", "rag_document_chunks", false),
                 new AppProperties.Model("http://localhost", "", "chat", "embedding", 1536),
-                new AppProperties.Ingestion(true, 1000, 3, 1),
+                new AppProperties.Ingestion(true, 1000, 3, 1, 600000),
                 new AppProperties.Retrieval(0.65, 0.35));
         RetrievalFusionService service = new RetrievalFusionService(properties);
         Long chunkId = 1001L;

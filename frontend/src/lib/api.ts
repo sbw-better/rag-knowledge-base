@@ -2,6 +2,7 @@ import axios, { AxiosError } from "axios";
 import { clearAuth, getToken, setAuth } from "./auth";
 import type {
   ApiResponse,
+  AuditLogResponse,
   AuthResponse,
   AdminUserResponse,
   ChatResponse,
@@ -16,6 +17,7 @@ import type {
   KnowledgeBaseMemberRequest,
   KnowledgeBaseMemberResponse,
   KnowledgeBaseResponse,
+  PageResponse,
   RebuildIndexResponse,
   SearchMode,
   SearchResponse,
@@ -106,13 +108,38 @@ function normalizeArray<T>(value: unknown, label: string): T[] {
   if (Array.isArray(value)) {
     return value as T[];
   }
+  if (value && typeof value === "object" && "items" in value && Array.isArray((value as { items?: unknown }).items)) {
+    return (value as { items: T[] }).items;
+  }
   if (value && typeof value === "object" && "success" in value && "data" in value) {
     const body = value as ApiResponse<unknown>;
     if (Array.isArray(body.data)) {
       return body.data as T[];
     }
+    if (body.data && typeof body.data === "object" && "items" in body.data && Array.isArray((body.data as { items?: unknown }).items)) {
+      return (body.data as { items: T[] }).items;
+    }
   }
   throw new ApiError(`${label}接口返回格式异常，请刷新页面或检查后端接口响应。`, undefined, limitDetails(JSON.stringify(value)));
+}
+
+function normalizePage<T>(value: unknown, label: string): PageResponse<T> {
+  if (value && typeof value === "object" && "items" in value && Array.isArray((value as { items?: unknown }).items)) {
+    return value as PageResponse<T>;
+  }
+  if (Array.isArray(value)) {
+    return {
+      items: value as T[],
+      page: 1,
+      pageSize: value.length,
+      total: value.length,
+      totalPages: 1
+    };
+  }
+  if (value && typeof value === "object" && "success" in value && "data" in value) {
+    return normalizePage<T>((value as ApiResponse<unknown>).data, label);
+  }
+  throw new ApiError(`${label}接口返回分页格式异常，请刷新页面或检查后端接口响应。`, undefined, limitDetails(JSON.stringify(value)));
 }
 
 function limitDetails(value: string) {
@@ -129,6 +156,12 @@ type ChatStreamHandlers = {
   onDelta?: (content: string) => void;
   onDone?: (data: ChatResponse) => void;
   onError?: (data: ChatStreamError) => void;
+};
+
+type PageParams = {
+  page: number;
+  pageSize: number;
+  keyword?: string;
 };
 
 function parseSseBlock(block: string) {
@@ -226,6 +259,11 @@ export const api = {
     return normalizeArray<AdminUserResponse>(data, "用户列表");
   },
 
+  async listAdminUsersPage(params: PageParams) {
+    const data = await apiClient.get<unknown, unknown>("/admin/users", { params });
+    return normalizePage<AdminUserResponse>(data, "用户列表");
+  },
+
   updateUserRoles(id: string, payload: UpdateUserRolesRequest) {
     return apiClient.patch<unknown, AdminUserResponse>(`/admin/users/${id}/roles`, payload);
   },
@@ -235,6 +273,11 @@ export const api = {
     return normalizeArray<TenantResponse>(data, "租户列表");
   },
 
+  async listAuditLogsPage(params: PageParams & { tenantId?: string; action?: string }) {
+    const data = await apiClient.get<unknown, unknown>("/admin/audit-logs", { params });
+    return normalizePage<AuditLogResponse>(data, "审计日志");
+  },
+
   createTenant(payload: TenantRequest) {
     return apiClient.post<unknown, TenantResponse>("/admin/tenants", payload);
   },
@@ -242,6 +285,11 @@ export const api = {
   async listKnowledgeBases() {
     const data = await apiClient.get<unknown, unknown>("/knowledge-bases");
     return normalizeArray<KnowledgeBaseResponse>(data, "知识库列表");
+  },
+
+  async listKnowledgeBasesPage(params: PageParams) {
+    const data = await apiClient.get<unknown, unknown>("/knowledge-bases", { params });
+    return normalizePage<KnowledgeBaseResponse>(data, "知识库列表");
   },
 
   getKnowledgeBase(id: string) {
@@ -291,6 +339,11 @@ export const api = {
   async listKnowledgeBaseDocuments(knowledgeBaseId: string) {
     const data = await apiClient.get<unknown, unknown>(`/knowledge-bases/${knowledgeBaseId}/documents`);
     return normalizeArray<DocumentItem>(data, "文档列表");
+  },
+
+  async listKnowledgeBaseDocumentsPage(knowledgeBaseId: string, params: PageParams) {
+    const data = await apiClient.get<unknown, unknown>(`/knowledge-bases/${knowledgeBaseId}/documents`, { params });
+    return normalizePage<DocumentItem>(data, "文档列表");
   },
 
   getDocument(id: string) {
@@ -391,6 +444,11 @@ export const api = {
   async listConversations(knowledgeBaseId: string) {
     const data = await apiClient.get<unknown, unknown>("/conversations", { params: { knowledgeBaseId } });
     return normalizeArray<ConversationSummaryResponse>(data, "会话列表");
+  },
+
+  async listConversationsPage(knowledgeBaseId: string, params: PageParams) {
+    const data = await apiClient.get<unknown, unknown>("/conversations", { params: { knowledgeBaseId, ...params } });
+    return normalizePage<ConversationSummaryResponse>(data, "会话列表");
   },
 
   renameConversation(id: string, title: string) {

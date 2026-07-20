@@ -47,9 +47,9 @@ public record AppProperties(
     }
 
     /**
-     * 文档异步入库配置，控制 worker 是否启用、扫描间隔、重试次数和批处理大小。
+     * 文档异步入库配置，控制 worker 是否启用、扫描间隔、重试次数、批处理大小和 RUNNING 超时恢复时间。
      */
-    public record Ingestion(boolean workerEnabled, long fixedDelayMs, int maxAttempts, int batchSize) {
+    public record Ingestion(boolean workerEnabled, long fixedDelayMs, int maxAttempts, int batchSize, long runningTimeoutMs) {
     }
 
     /**

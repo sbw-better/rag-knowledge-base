@@ -41,7 +41,7 @@ app:
     enabled: ${MILVUS_ENABLED:true}
   model:
     base-url: ${OPENAI_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
-    api-key: ${OPENAI_API_KEY:sk-ws-H.RPPIMLY.objC.MEYCIQCiBL6fUaNV1O9H57QQglOT0RLcXcGwb95ARWfIHqt_BQIhAKHEvMIvd8IHuM6G-I6dT8Ao8XScmMv_S7_DpzOmtaEu}
+    api-key: ${OPENAI_API_KEY:}
     chat-model: ${OPENAI_CHAT_MODEL:qwen3.7-plus}
     embedding-model: ${OPENAI_EMBEDDING_MODEL:text-embedding-v4}
     embedding-dimensions: ${OPENAI_EMBEDDING_DIMENSIONS:1536}
@@ -50,6 +50,7 @@ app:
     fixed-delay-ms: ${INGESTION_FIXED_DELAY_MS:5000}
     max-attempts: ${INGESTION_MAX_ATTEMPTS:3}
     batch-size: ${INGESTION_BATCH_SIZE:3}
+    running-timeout-ms: ${INGESTION_RUNNING_TIMEOUT_MS:600000}
   retrieval:
     vector-weight: ${RETRIEVAL_VECTOR_WEIGHT:0.65}
     keyword-weight: ${RETRIEVAL_KEYWORD_WEIGHT:0.35}
@@ -59,6 +60,7 @@ logging:
     com.example.rag: INFO
 
 mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
   configuration:
     map-underscore-to-camel-case: true
   global-config:

@@ -72,7 +72,7 @@ Write-Host "Starting Spring Boot application..."
 $javaExe = Join-Path $JavaHome "bin\java.exe"
 $outLog = Join-Path $projectRoot "logs\app.out.log"
 $errLog = Join-Path $projectRoot "logs\app.err.log"
-cmd /c "start `"ragkb-app`" /D `"$projectRoot`" /B `"$javaExe`" -jar `"target\rag-knowledge-base-0.1.0-SNAPSHOT.jar`" > `"$outLog`" 2> `"$errLog`""
+cmd /c "start `"ragkb-app`" /D `"$projectRoot`" /B `"$javaExe`" -Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8 -jar `"target\rag-knowledge-base-0.1.0-SNAPSHOT.jar`" > `"$outLog`" 2> `"$errLog`""
 
 Write-Host "Waiting for health endpoint..."
 for ($i = 0; $i -lt 30; $i++) {

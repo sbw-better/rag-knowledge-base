@@ -132,6 +132,45 @@ export function EmptyState({ title, description }: { title: string; description:
   );
 }
 
+export function Pagination({
+  page,
+  pageSize,
+  total,
+  onPageChange
+}: {
+  page: number;
+  pageSize: number;
+  total: number;
+  onPageChange: (page: number) => void;
+}) {
+  if (total <= pageSize) {
+    return null;
+  }
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(Math.max(page, 1), totalPages);
+  const start = (safePage - 1) * pageSize + 1;
+  const end = Math.min(total, safePage * pageSize);
+
+  return (
+    <div className="flex min-w-0 flex-col gap-3 border-t border-slate-100 px-4 py-3 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+      <span>
+        显示 {start}-{end}，共 {total} 条
+      </span>
+      <div className="flex items-center gap-2">
+        <Button type="button" variant="secondary" size="sm" disabled={safePage <= 1} onClick={() => onPageChange(safePage - 1)}>
+          上一页
+        </Button>
+        <span className="min-w-16 text-center text-xs text-slate-400">
+          {safePage} / {totalPages}
+        </span>
+        <Button type="button" variant="secondary" size="sm" disabled={safePage >= totalPages} onClick={() => onPageChange(safePage + 1)}>
+          下一页
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function Modal({
   open,
   title,

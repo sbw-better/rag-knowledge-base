@@ -137,6 +137,10 @@ mvn test
 cd frontend
 npm run typecheck
 npm run build
+cd ..
+
+# 端到端冒烟测试，默认清理本轮创建的测试知识库
+powershell -ExecutionPolicy Bypass -File .\scripts\e2e-smoke.ps1 -AdminEmail your-admin@example.com
 
 # Docker 依赖服务
 docker compose up -d mysql minio milvus
@@ -156,6 +160,7 @@ docker compose up -d attu
 - `JWT_SECRET` 不能使用默认值，且长度至少 32 位。
 - MinIO 账号密码不能使用默认 `minioadmin`。
 - `OPENAI_API_KEY` 必须通过环境变量或密钥管理注入。
+- `INGESTION_RUNNING_TIMEOUT_MS` 控制文档入库任务卡在 `RUNNING` 后的自动恢复时间，默认 10 分钟。
 - 生产环境不会匿名开放 Swagger 和 `/actuator/info`。
 
 生产部署细节见 [docs/07-deployment.md](docs/07-deployment.md) 和 [docs/09-security.md](docs/09-security.md)。

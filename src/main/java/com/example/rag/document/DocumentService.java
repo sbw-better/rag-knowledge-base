@@ -1,8 +1,11 @@
 package com.example.rag.document;
 
+import com.example.rag.audit.AuditLogService;
 import com.example.rag.auth.CurrentUser;
 import com.example.rag.common.BadRequestException;
 import com.example.rag.common.NotFoundException;
+import com.example.rag.common.PageRequestParams;
+import com.example.rag.common.PageResponse;
 import com.example.rag.config.AppProperties;
 import com.example.rag.domain.DocumentEntity;
 import com.example.rag.domain.DocumentChunk;
@@ -50,10 +53,11 @@ public class DocumentService {
                            DocumentMapper documentMapper,
                            DocumentChunkMapper chunkMapper,
                            RagTaskMapper taskMapper,
-                           MessageCitationMapper citationMapper,
-                           VectorIndexService vectorIndexService,
-                           StorageService storageService,
-                           AppProperties properties) {
+                            MessageCitationMapper citationMapper,
+                            VectorIndexService vectorIndexService,
+                            StorageService storageService,
+                            AppProperties properties,
+                            AuditLogService auditLogService) {
         this.knowledgeBaseService = knowledgeBaseService;
         this.documentMapper = documentMapper;
         this.chunkMapper = chunkMapper;
@@ -62,6 +66,7 @@ public class DocumentService {
         this.vectorIndexService = vectorIndexService;
         this.storageService = storageService;
         this.properties = properties;
+        this.auditLogService = auditLogService;
     }
 
     private final KnowledgeBaseService knowledgeBaseService;
@@ -72,6 +77,7 @@ public class DocumentService {
     private final VectorIndexService vectorIndexService;
     private final StorageService storageService;
     private final AppProperties properties;
+    private final AuditLogService auditLogService;
 
     @Transactional
     public UploadResponse upload(Long knowledgeBaseId, MultipartFile file) {
@@ -108,6 +114,8 @@ public class DocumentService {
         taskMapper.insert(task);
         log.info("文档上传已受理，已创建入库任务。documentId={}, taskId={}, objectKey={}",
                 document.getId(), task.getId(), document.getObjectKey());
+        auditLogService.record(user, "DOCUMENT_UPLOAD", "DOCUMENT", document.getId(),
+                "上传文档：" + document.getFileName() + "，入库任务：" + task.getId());
         return new UploadResponse(toResponse(document), toResponse(task));
     }
 
@@ -136,6 +144,22 @@ public class DocumentService {
         log.debug("查询知识库文档列表完成。tenantId={}, userId={}, knowledgeBaseId={}, count={}",
                 user.getTenantId(), user.getId(), knowledgeBaseId, documents.size());
         return documents;
+    }
+
+    public PageResponse<DocumentItem> listByKnowledgeBase(Long knowledgeBaseId, PageRequestParams params) {
+        UserAccount user = CurrentUser.required();
+        knowledgeBaseService.requireContentManageAccess(knowledgeBaseId);
+        long total = documentMapper.countByKnowledgeBaseIdAndTenantId(knowledgeBaseId, user.getTenantId(), params.keyword());
+        List<DocumentItem> documents = documentMapper.selectPageByKnowledgeBaseIdAndTenantId(
+                        knowledgeBaseId, user.getTenantId(), params.keyword(), params.pageSize(), params.offset())
+                .stream()
+                .map(document -> new DocumentItem(
+                        toResponse(document),
+                        toResponseOrNull(taskMapper.selectLatestByDocumentId(document.getId()))))
+                .toList();
+        log.debug("分页查询知识库文档完成。tenantId={}, userId={}, knowledgeBaseId={}, page={}, pageSize={}, total={}",
+                user.getTenantId(), user.getId(), knowledgeBaseId, params.page(), params.pageSize(), total);
+        return PageResponse.of(documents, params.page(), params.pageSize(), total);
     }
 
     public TaskResponse getTask(Long id) {
@@ -184,14 +208,17 @@ public class DocumentService {
         taskMapper.insert(task);
         log.info("文档重新入库任务已创建。tenantId={}, userId={}, documentId={}, taskId={}",
                 user.getTenantId(), user.getId(), document.getId(), task.getId());
+        auditLogService.record(user, "DOCUMENT_REINGEST", "DOCUMENT", document.getId(),
+                "重新入库文档：" + document.getFileName() + "，入库任务：" + task.getId());
         return toResponse(task);
     }
 
     /**
      * 删除文档及其检索索引。
      *
-     * <p>由于历史回答引用表带有 document/chunk 外键，删除前必须先清理引用记录，再删除
-     * Milvus 向量、MySQL 切片和文档元数据。</p>
+     * <p>项目约定 MySQL 不使用外键，所以删除文档时必须由业务代码显式清理关联数据。
+     * 清理顺序是：回答引用、Milvus 向量、MySQL 切片、入库任务、文档元数据、MinIO 原文件。
+     * 其中 Milvus 是外部索引，删除失败会抛出异常阻止后续 MySQL 删除，避免出现“数据库没了但向量还在”的状态。</p>
      */
     @Transactional
     public void delete(Long id) {
@@ -199,14 +226,18 @@ public class DocumentService {
         DocumentEntity document = requireDocument(id);
         knowledgeBaseService.requireContentManageAccess(document.getKnowledgeBaseId());
         citationMapper.deleteByDocumentId(document.getId());
-        vectorIndexService.deleteByDocument(document.getId());
+        vectorIndexService.deleteVectorIndexByDocument(document.getId());
+        int deletedChunks = chunkMapper.deleteByDocumentId(document.getId());
+        int deletedTasks = taskMapper.deleteByDocumentId(document.getId());
         int deleted = documentMapper.deleteByIdAndTenantId(document.getId(), document.getTenantId());
         if (deleted == 0) {
             throw new NotFoundException("文档不存在");
         }
         storageService.deleteQuietly(document.getObjectKey());
-        log.info("文档已删除。tenantId={}, userId={}, knowledgeBaseId={}, documentId={}",
-                user.getTenantId(), user.getId(), document.getKnowledgeBaseId(), document.getId());
+        log.info("文档已删除。tenantId={}, userId={}, knowledgeBaseId={}, documentId={}, deletedChunks={}, deletedTasks={}",
+                user.getTenantId(), user.getId(), document.getKnowledgeBaseId(), document.getId(), deletedChunks, deletedTasks);
+        auditLogService.record(user, "DOCUMENT_DELETE", "DOCUMENT", document.getId(),
+                "删除文档：" + document.getFileName());
     }
 
     public DocumentResponse toResponse(DocumentEntity document) {

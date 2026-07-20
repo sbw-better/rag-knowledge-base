@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Badge, Button, EmptyState, ErrorMessage, Field, Input, Label, PageHeader, Panel, PanelHeader, Textarea } from "../components/ui";
+import { Badge, Button, EmptyState, ErrorMessage, Field, Input, Label, PageHeader, Pagination, Panel, PanelHeader, Textarea } from "../components/ui";
 import { api } from "../lib/api";
 import { cn, formatBytes, formatDateTime, shortId } from "../lib/utils";
 import type {
@@ -40,6 +40,8 @@ type RecentUpload = {
   document: DocumentResponse;
   task: TaskResponse;
 };
+const DOCUMENT_PAGE_SIZE = 8;
+const CONVERSATION_PAGE_SIZE = 10;
 type ChatItem = {
   id?: string;
   role: "user" | "assistant";
@@ -268,14 +270,16 @@ function DocumentsPanel({ kbId }: { kbId: string }) {
   const [fileValidationError, setFileValidationError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [chunkDocumentId, setChunkDocumentId] = useState<string | undefined>();
+  const [documentKeyword, setDocumentKeyword] = useState("");
+  const [documentPage, setDocumentPage] = useState(1);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const documentsQuery = useQuery({
-    queryKey: ["knowledge-base-documents", kbId],
-    queryFn: () => api.listKnowledgeBaseDocuments(kbId),
+    queryKey: ["knowledge-base-documents-page", kbId, documentPage, DOCUMENT_PAGE_SIZE, documentKeyword],
+    queryFn: () => api.listKnowledgeBaseDocumentsPage(kbId, { page: documentPage, pageSize: DOCUMENT_PAGE_SIZE, keyword: documentKeyword }),
     enabled: Boolean(kbId),
     refetchInterval: (query) => {
-      const items = query.state.data ?? [];
+      const items = query.state.data?.items ?? [];
       return items.some((item) => item.task && !["SUCCEEDED", "FAILED", "CANCELLED"].includes(item.task.status)) ? 3000 : false;
     }
   });
@@ -313,6 +317,8 @@ function DocumentsPanel({ kbId }: { kbId: string }) {
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
+      setDocumentPage(1);
+      queryClient.invalidateQueries({ queryKey: ["knowledge-base-documents-page", kbId] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-base-documents", kbId] });
     }
   });
@@ -324,13 +330,28 @@ function DocumentsPanel({ kbId }: { kbId: string }) {
   });
 
   const selectedChunkDocument = useMemo(
-    () => documentsQuery.data?.find((item) => item.document.id === chunkDocumentId)?.document,
+    () => documentsQuery.data?.items.find((item) => item.document.id === chunkDocumentId)?.document,
     [chunkDocumentId, documentsQuery.data]
   );
+  const documents = documentsQuery.data?.items ?? [];
+  const totalDocuments = documentsQuery.data?.total ?? 0;
+  const documentTotalPages = documentsQuery.data?.totalPages ?? 1;
+  const safeDocumentPage = documentsQuery.data?.page ?? documentPage;
+
+  useEffect(() => {
+    setDocumentPage(1);
+  }, [documentKeyword]);
+
+  useEffect(() => {
+    if (documentPage > documentTotalPages) {
+      setDocumentPage(documentTotalPages);
+    }
+  }, [documentPage, documentTotalPages]);
 
   const reingestMutation = useMutation({
     mutationFn: (documentId: string) => api.reingestDocument(documentId),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["knowledge-base-documents-page", kbId] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-base-documents", kbId] });
     }
   });
@@ -341,8 +362,10 @@ function DocumentsPanel({ kbId }: { kbId: string }) {
       if (chunkDocumentId === documentId) {
         setChunkDocumentId(undefined);
       }
+      queryClient.invalidateQueries({ queryKey: ["knowledge-base-documents-page", kbId] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-base-documents", kbId] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-bases"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-bases-page"] });
     }
   });
 
@@ -413,15 +436,32 @@ function DocumentsPanel({ kbId }: { kbId: string }) {
       </Panel>
 
       <Panel className="min-w-0">
-        <PanelHeader title="文档任务" description="显示当前知识库下的真实文档和最近一次入库任务。" />
+        <PanelHeader
+          title="文档任务"
+          description="显示当前知识库下的真实文档和最近一次入库任务。"
+          actions={<Badge tone="slate">{totalDocuments} 个文档</Badge>}
+        />
         <div className="p-5">
           {documentsQuery.isLoading ? <div className="text-sm text-slate-500">正在加载文档...</div> : null}
           <ErrorMessage error={documentsQuery.error} />
-          {documentsQuery.data?.length === 0 ? (
+          {totalDocuments > 0 || documentKeyword ? (
+            <div className="relative mb-4 max-w-xl">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                className="pl-9"
+                value={documentKeyword}
+                onChange={(event) => setDocumentKeyword(event.target.value)}
+                placeholder="搜索文件名或任务状态"
+              />
+            </div>
+          ) : null}
+          {totalDocuments === 0 && !documentKeyword ? (
             <EmptyState title="暂无文档" description="上传文档后，系统会创建入库任务并在这里显示处理状态。" />
+          ) : totalDocuments === 0 ? (
+            <EmptyState title="没有匹配文档" description="可以更换搜索关键词，或清空搜索条件。" />
           ) : (
             <div className="max-h-none space-y-3 overflow-y-visible pr-0 xl:max-h-[620px] xl:overflow-y-auto xl:pr-2">
-              {documentsQuery.data?.map((item) => (
+              {documents.map((item) => (
                 <TaskRow
                   key={item.document.id}
                   item={item}
@@ -441,6 +481,7 @@ function DocumentsPanel({ kbId }: { kbId: string }) {
           )}
           <ErrorMessage error={reingestMutation.error || deleteDocumentMutation.error} />
         </div>
+        <Pagination page={safeDocumentPage} pageSize={DOCUMENT_PAGE_SIZE} total={totalDocuments} onPageChange={setDocumentPage} />
       </Panel>
       <DocumentChunksDrawer
         open={Boolean(chunkDocumentId)}
@@ -653,6 +694,7 @@ function ChatPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number })
   const [selectedAssistantId, setSelectedAssistantId] = useState<string | undefined>();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyKeyword, setHistoryKeyword] = useState("");
+  const [historyPage, setHistoryPage] = useState(1);
 
   const conversationQuery = useQuery({
     queryKey: ["chat-conversation", kbId, conversationId ?? "latest"],
@@ -662,8 +704,8 @@ function ChatPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number })
   });
 
   const conversationsQuery = useQuery({
-    queryKey: ["chat-conversations", kbId],
-    queryFn: () => api.listConversations(kbId),
+    queryKey: ["chat-conversations", kbId, historyPage, CONVERSATION_PAGE_SIZE, historyKeyword],
+    queryFn: () => api.listConversationsPage(kbId, { page: historyPage, pageSize: CONVERSATION_PAGE_SIZE, keyword: historyKeyword }),
     enabled: Boolean(kbId)
   });
 
@@ -674,8 +716,20 @@ function ChatPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number })
     setQuestion("");
     setHistoryOpen(false);
     setHistoryKeyword("");
+    setHistoryPage(1);
     setSkipRestore(false);
   }, [kbId]);
+
+  useEffect(() => {
+    setHistoryPage(1);
+  }, [historyKeyword]);
+
+  useEffect(() => {
+    const totalPages = conversationsQuery.data?.totalPages ?? 1;
+    if (historyPage > totalPages) {
+      setHistoryPage(totalPages);
+    }
+  }, [conversationsQuery.data?.totalPages, historyPage]);
 
   useEffect(() => {
     if (!conversationQuery.isSuccess) {
@@ -854,6 +908,7 @@ function ChatPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number })
     setQuestion("");
     setHistoryOpen(false);
     setHistoryKeyword("");
+    setHistoryPage(1);
     setSkipRestore(true);
     chatMutation.reset();
     queryClient.removeQueries({ queryKey: ["chat-conversation", kbId] });
@@ -895,19 +950,11 @@ function ChatPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number })
   }
 
   const currentConversationTitle = conversationId
-    ? conversationsQuery.data?.find((item) => item.id === conversationId)?.title ?? `会话 ${shortId(conversationId)}`
+    ? conversationsQuery.data?.items.find((item) => item.id === conversationId)?.title ?? conversationQuery.data?.title ?? `会话 ${shortId(conversationId)}`
     : "新会话";
-  const filteredConversations = useMemo(() => {
-    const keyword = historyKeyword.trim().toLowerCase();
-    const conversations = conversationsQuery.data ?? [];
-    if (!keyword) {
-      return conversations;
-    }
-    return conversations.filter((conversation) => {
-      const title = conversation.title || `会话 ${shortId(conversation.id)}`;
-      return `${title} ${conversation.id}`.toLowerCase().includes(keyword);
-    });
-  }, [conversationsQuery.data, historyKeyword]);
+  const conversations = conversationsQuery.data?.items ?? [];
+  const conversationTotal = conversationsQuery.data?.total ?? 0;
+  const safeHistoryPage = conversationsQuery.data?.page ?? historyPage;
 
   const selectedAssistant = useMemo(
     () => messages.find((item) => item.role === "assistant" && item.id === selectedAssistantId)
@@ -986,14 +1033,14 @@ function ChatPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number })
                       </div>
                     </div>
                     {conversationsQuery.isLoading ? <p className="px-3 py-3 text-sm text-slate-500">正在加载会话...</p> : null}
-                    {!conversationsQuery.isLoading && (conversationsQuery.data ?? []).length === 0 ? (
+                    {!conversationsQuery.isLoading && conversationTotal === 0 && !historyKeyword ? (
                       <p className="px-3 py-3 text-sm text-slate-500">暂无历史会话</p>
                     ) : null}
-                    {!conversationsQuery.isLoading && (conversationsQuery.data ?? []).length > 0 && filteredConversations.length === 0 ? (
+                    {!conversationsQuery.isLoading && conversationTotal === 0 && historyKeyword ? (
                       <p className="px-3 py-3 text-sm text-slate-500">没有找到匹配的会话</p>
                     ) : null}
                     <div className="max-h-72 overflow-y-auto p-2">
-                      {filteredConversations.map((conversation) => (
+                      {conversations.map((conversation) => (
                         <button
                           key={conversation.id}
                           type="button"
@@ -1036,6 +1083,12 @@ function ChatPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number })
                         </button>
                       ))}
                     </div>
+                    <Pagination
+                      page={safeHistoryPage}
+                      pageSize={CONVERSATION_PAGE_SIZE}
+                      total={conversationTotal}
+                      onPageChange={setHistoryPage}
+                    />
                   </div>
                 ) : null}
               </div>

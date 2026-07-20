@@ -2,6 +2,8 @@ package com.example.rag.knowledge;
 
 import com.example.rag.common.ApiResponse;
 import com.example.rag.auth.dto.AdminUserResponse;
+import com.example.rag.common.PageRequestParams;
+import com.example.rag.common.PageResponse;
 import com.example.rag.document.DocumentService;
 import com.example.rag.document.dto.DocumentItem;
 import com.example.rag.document.dto.UploadResponse;
@@ -65,8 +67,11 @@ public class KnowledgeBaseController {
      * <p>并不是简单返回全库数据；Service 会按租户、owner、ADMIN、成员权限过滤。</p>
      */
     @GetMapping
-    ApiResponse<List<KnowledgeBaseResponse>> list() {
-        return ApiResponse.ok(knowledgeBaseService.list());
+    ApiResponse<PageResponse<KnowledgeBaseResponse>> list(
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer pageSize,
+            @RequestParam(required = false) String keyword) {
+        return ApiResponse.ok(knowledgeBaseService.listPage(PageRequestParams.of(page, pageSize, keyword)));
     }
 
     /**
@@ -81,8 +86,12 @@ public class KnowledgeBaseController {
      * 查询某个知识库下的文档及最近一次入库任务状态。
      */
     @GetMapping("/{id}/documents")
-    ApiResponse<List<DocumentItem>> listDocuments(@PathVariable Long id) {
-        return ApiResponse.ok(documentService.listByKnowledgeBase(id));
+    ApiResponse<PageResponse<DocumentItem>> listDocuments(
+            @PathVariable Long id,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer pageSize,
+            @RequestParam(required = false) String keyword) {
+        return ApiResponse.ok(documentService.listByKnowledgeBase(id, PageRequestParams.of(page, pageSize, keyword)));
     }
 
     /**

@@ -25,6 +25,7 @@
 - Flyway 初始化脚本改为 MySQL 表结构。
 - 实体从 JPA Entity 改为 MyBatis-Plus DO。
 - Repository 改为 Mapper。
+- 自定义 SQL 已从 Mapper 注解迁移到 `src/main/resources/mapper/*.xml`，Mapper 接口只保留方法声明和 `@Param`。
 - DTO ID 按字符串返回，前端继续用 `string`。
 - `document_chunks` 删除向量字段，只保存文本和元数据。
 - Milvus collection 保存 chunk 向量和检索需要的动态字段。
@@ -33,6 +34,19 @@
 - `HYBRID` 保留 RRF 融合逻辑。
 - Docker Compose 替换 PostgreSQL 为 MySQL，并新增 Milvus standalone 依赖。
 - 移除配置文件中的默认真实 API Key，只保留环境变量占位。
+
+## Mapper XML 维护约定
+
+迁移到 MyBatis-Plus 后，简单单表 CRUD 使用 `BaseMapper`；需要自定义 SQL 的查询、删除和统计统一写入 XML：
+
+- Java 接口位置：`src/main/java/com/example/rag/mapper/*Mapper.java`。
+- XML 位置：`src/main/resources/mapper/*Mapper.xml`。
+- XML `namespace` 必须等于 Mapper 接口全限定名。
+- XML 的 `select/insert/update/delete id` 必须等于 Mapper 方法名。
+- Mapper 方法参数必须使用 `@Param` 明确命名，避免 XML 参数名不稳定。
+- `application.yml` 中通过 `mybatis-plus.mapper-locations: classpath*:/mapper/**/*.xml` 加载 XML。
+
+这样做的好处是业务代码更清爽，SQL 也更适合后续审查、调优和 DBA 协作。
 
 ## 风险和防护
 
@@ -69,4 +83,4 @@ MySQL 是事实库，Milvus 是索引库。入库失败会记录任务错误；�
 - 已增加按知识库重建索引接口；后续补按文档重建和异步进度。
 - 增加任务并发锁和超时恢复。
 - 增加 OpenSearch 作为关键词检索升级方案。
-- 增加数据库分页接口和更多 Mapper 测试。
+- 已增加核心权限、分页和审计单元测试；后续继续补真实 MySQL + Milvus 集成测试。

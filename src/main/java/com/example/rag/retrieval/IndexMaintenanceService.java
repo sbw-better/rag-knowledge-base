@@ -1,8 +1,11 @@
 package com.example.rag.retrieval;
 
+import com.example.rag.audit.AuditLogService;
+import com.example.rag.auth.CurrentUser;
 import com.example.rag.domain.DocumentChunk;
 import com.example.rag.domain.DocumentEntity;
 import com.example.rag.domain.KnowledgeBase;
+import com.example.rag.domain.UserAccount;
 import com.example.rag.knowledge.KnowledgeBaseService;
 import com.example.rag.mapper.DocumentChunkMapper;
 import com.example.rag.mapper.DocumentMapper;
@@ -31,17 +34,20 @@ public class IndexMaintenanceService {
     private final DocumentMapper documentMapper;
     private final EmbeddingClient embeddingClient;
     private final VectorIndexService vectorIndexService;
+    private final AuditLogService auditLogService;
 
     public IndexMaintenanceService(KnowledgeBaseService knowledgeBaseService,
-                                   DocumentChunkMapper chunkMapper,
-                                   DocumentMapper documentMapper,
-                                   EmbeddingClient embeddingClient,
-                                   VectorIndexService vectorIndexService) {
+                                    DocumentChunkMapper chunkMapper,
+                                    DocumentMapper documentMapper,
+                                    EmbeddingClient embeddingClient,
+                                    VectorIndexService vectorIndexService,
+                                    AuditLogService auditLogService) {
         this.knowledgeBaseService = knowledgeBaseService;
         this.chunkMapper = chunkMapper;
         this.documentMapper = documentMapper;
         this.embeddingClient = embeddingClient;
         this.vectorIndexService = vectorIndexService;
+        this.auditLogService = auditLogService;
     }
 
     /**
@@ -51,6 +57,7 @@ public class IndexMaintenanceService {
      * 并记录重建进度、失败 chunk 和索引版本。</p>
      */
     public RebuildIndexResponse rebuildKnowledgeBase(Long knowledgeBaseId) {
+        UserAccount operator = CurrentUser.required();
         KnowledgeBase kb = knowledgeBaseService.requireManageAccess(knowledgeBaseId);
         List<DocumentChunk> chunks = chunkMapper.selectByKnowledgeBaseId(kb.getId());
         Map<Long, DocumentEntity> documentCache = new HashMap<>();
@@ -70,6 +77,8 @@ public class IndexMaintenanceService {
 
         log.info("知识库向量索引重建完成。knowledgeBaseId={}, chunks={}, rebuilt={}",
                 kb.getId(), chunks.size(), rebuilt);
+        auditLogService.record(operator, "KNOWLEDGE_BASE_INDEX_REBUILD", "KNOWLEDGE_BASE", kb.getId(),
+                "重建知识库索引，切片数：" + chunks.size() + "，成功写入：" + rebuilt);
         return new RebuildIndexResponse(kb.getId().toString(), chunks.size(), rebuilt);
     }
 }

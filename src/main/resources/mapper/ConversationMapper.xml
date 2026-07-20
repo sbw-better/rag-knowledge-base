@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.rag.mapper.ConversationMapper">
+    <select id="selectByIdAndTenantIdAndUserId" resultType="com.example.rag.domain.Conversation">
+        select * from conversations
+        where id = #{id} and tenant_id = #{tenantId} and user_id = #{userId}
+        limit 1
+    </select>
+
+    <select id="selectLatestByKnowledgeBaseId" resultType="com.example.rag.domain.Conversation">
+        select *
+        from conversations
+        where tenant_id = #{tenantId}
+          and user_id = #{userId}
+          and knowledge_base_id = #{knowledgeBaseId}
+        order by updated_at desc, created_at desc
+        limit 1
+    </select>
+
+    <select id="selectByKnowledgeBaseId" resultType="com.example.rag.domain.Conversation">
+        select *
+        from conversations
+        where tenant_id = #{tenantId}
+          and user_id = #{userId}
+          and knowledge_base_id = #{knowledgeBaseId}
+        order by updated_at desc, created_at desc
+        limit #{limit}
+    </select>
+
+    <select id="selectPageByKnowledgeBaseId" resultType="com.example.rag.domain.Conversation">
+        select *
+        from conversations
+        where tenant_id = #{tenantId}
+          and user_id = #{userId}
+          and knowledge_base_id = #{knowledgeBaseId}
+          and (
+            #{keyword} = ''
+            or lower(title) like concat('%', lower(#{keyword}), '%')
+            or cast(id as char) like concat('%', #{keyword}, '%')
+          )
+        order by updated_at desc, created_at desc
+        limit #{limit} offset #{offset}
+    </select>
+
+    <select id="countByKnowledgeBaseId" resultType="long">
+        select count(1)
+        from conversations
+        where tenant_id = #{tenantId}
+          and user_id = #{userId}
+          and knowledge_base_id = #{knowledgeBaseId}
+          and (
+            #{keyword} = ''
+            or lower(title) like concat('%', lower(#{keyword}), '%')
+            or cast(id as char) like concat('%', #{keyword}, '%')
+          )
+    </select>
+</mapper>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.rag.mapper.MessageMapper">
+    <select id="selectByConversationIdOrderByCreatedAtAsc" resultType="com.example.rag.domain.MessageEntity">
+        select * from messages
+        where conversation_id = #{conversationId}
+        order by created_at asc
+    </select>
+
+    <delete id="deleteByConversationId">
+        delete from messages
+        where conversation_id = #{conversationId}
+    </delete>
+</mapper>

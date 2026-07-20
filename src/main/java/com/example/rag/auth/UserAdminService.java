@@ -1,10 +1,13 @@
 package com.example.rag.auth;
 
+import com.example.rag.audit.AuditLogService;
 import com.example.rag.auth.dto.AdminUserResponse;
 import com.example.rag.auth.dto.UpdateUserRolesRequest;
 import com.example.rag.common.BadRequestException;
 import com.example.rag.common.ForbiddenException;
 import com.example.rag.common.NotFoundException;
+import com.example.rag.common.PageRequestParams;
+import com.example.rag.common.PageResponse;
 import com.example.rag.domain.Role;
 import com.example.rag.domain.UserAccount;
 import com.example.rag.mapper.RoleMapper;
@@ -26,10 +29,12 @@ import java.util.Set;
 public class UserAdminService {
     private final UserMapper userMapper;
     private final RoleMapper roleMapper;
+    private final AuditLogService auditLogService;
 
-    public UserAdminService(UserMapper userMapper, RoleMapper roleMapper) {
+    public UserAdminService(UserMapper userMapper, RoleMapper roleMapper, AuditLogService auditLogService) {
         this.userMapper = userMapper;
         this.roleMapper = roleMapper;
+        this.auditLogService = auditLogService;
     }
 
     public List<AdminUserResponse> listUsers() {
@@ -41,6 +46,21 @@ public class UserAdminService {
                 .peek(user -> user.setRoles(new HashSet<>(userMapper.selectRolesByUserId(user.getId()))))
                 .map(UserAdminService::toResponse)
                 .toList();
+    }
+
+    public PageResponse<AdminUserResponse> listUsers(PageRequestParams params) {
+        UserAccount current = CurrentUser.required();
+        if (!isAdmin(current)) {
+            throw new ForbiddenException("只有平台管理员可以查看用户列表");
+        }
+        long total = userMapper.countByTenantIdAndKeyword(current.getTenantId(), params.keyword());
+        List<AdminUserResponse> users = userMapper.selectPageByTenantId(
+                        current.getTenantId(), params.keyword(), params.pageSize(), params.offset())
+                .stream()
+                .peek(user -> user.setRoles(new HashSet<>(userMapper.selectRolesByUserId(user.getId()))))
+                .map(UserAdminService::toResponse)
+                .toList();
+        return PageResponse.of(users, params.page(), params.pageSize(), total);
     }
 
     @Transactional
@@ -69,6 +89,8 @@ public class UserAdminService {
             userMapper.insertUserRole(target.getId(), role.getId());
         }
         target.setRoles(new HashSet<>(roles));
+        auditLogService.record(current, "USER_ROLE_UPDATE", "USER", target.getId(),
+                "更新用户角色：" + target.getEmail() + " -> " + names);
         return toResponse(target);
     }
 

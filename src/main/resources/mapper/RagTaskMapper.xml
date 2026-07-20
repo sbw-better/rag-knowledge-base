@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.rag.mapper.RagTaskMapper">
+    <select id="selectByIdAndTenantId" resultType="com.example.rag.domain.RagTask">
+        select * from rag_tasks
+        where id = #{id} and tenant_id = #{tenantId}
+        limit 1
+    </select>
+
+    <select id="selectLatestByDocumentId" resultType="com.example.rag.domain.RagTask">
+        select * from rag_tasks
+        where document_id = #{documentId}
+        order by created_at desc
+        limit 1
+    </select>
+
+    <select id="selectRunnable" resultType="com.example.rag.domain.RagTask">
+        select * from rag_tasks
+        where status = #{status}
+        order by created_at asc
+        limit #{limit}
+    </select>
+
+    <select id="selectTimedOutRunning" resultType="com.example.rag.domain.RagTask">
+        select * from rag_tasks
+        where status = #{status}
+          and locked_at is not null
+          and locked_at &lt; #{threshold}
+        order by locked_at asc
+        limit #{limit}
+    </select>
+
+    <delete id="deleteByDocumentId">
+        delete from rag_tasks
+        where document_id = #{documentId}
+    </delete>
+</mapper>

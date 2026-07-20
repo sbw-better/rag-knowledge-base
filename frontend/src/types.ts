@@ -4,6 +4,14 @@ export type ApiResponse<T> = {
   error: string | null;
 };
 
+export type PageResponse<T> = {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
 export type UserResponse = {
   id: string;
   email: string;
@@ -39,6 +47,17 @@ export type TenantResponse = {
 
 export type TenantRequest = {
   name: string;
+};
+
+export type AuditLogResponse = {
+  id: string;
+  tenantId: string | null;
+  userId: string | null;
+  action: string;
+  targetType: string | null;
+  targetId: string | null;
+  detail: string | null;
+  createdAt: string;
 };
 
 export type KnowledgeBaseRequest = {

@@ -3,6 +3,8 @@ package com.example.rag.chat;
 import com.example.rag.auth.CurrentUser;
 import com.example.rag.common.Ids;
 import com.example.rag.common.NotFoundException;
+import com.example.rag.common.PageRequestParams;
+import com.example.rag.common.PageResponse;
 import com.example.rag.domain.Conversation;
 import com.example.rag.domain.DocumentChunk;
 import com.example.rag.domain.DocumentEntity;
@@ -282,6 +284,19 @@ public class ChatService {
                 .stream()
                 .map(this::toConversationSummary)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<ConversationSummaryResponse> listConversations(Long knowledgeBaseId, PageRequestParams params) {
+        UserAccount user = CurrentUser.required();
+        KnowledgeBase kb = knowledgeBaseService.requireAccess(knowledgeBaseId);
+        long total = conversationMapper.countByKnowledgeBaseId(user.getTenantId(), user.getId(), kb.getId(), params.keyword());
+        List<ConversationSummaryResponse> conversations = conversationMapper.selectPageByKnowledgeBaseId(
+                        user.getTenantId(), user.getId(), kb.getId(), params.keyword(), params.pageSize(), params.offset())
+                .stream()
+                .map(this::toConversationSummary)
+                .toList();
+        return PageResponse.of(conversations, params.page(), params.pageSize(), total);
     }
 
     @Transactional

@@ -60,6 +60,31 @@ select id, document_id, status, attempts, error_message from rag_tasks order by 
 select knowledge_base_id, count(*) from document_chunks group by knowledge_base_id;
 ```
 
+## 执行端到端冒烟测试
+
+在 Docker 依赖和后端启动后，可以执行：
+
+```powershell
+cd D:\ai-projects\rag-knowledge-base
+powershell -ExecutionPolicy Bypass -File .\scripts\e2e-smoke.ps1 -AdminEmail your-admin@example.com
+```
+
+脚本会自动注册测试用户、创建知识库、授权成员、上传样例文档、等待入库、执行检索和问答、验证会话恢复和审计日志。
+默认会删除本轮创建的测试文档和知识库；如需保留现场用于排查，添加 `-KeepData`。
+
+## 文档删除一致性
+
+项目约定 MySQL 不依赖外键，因此删除文档时由业务代码按顺序主动清理：
+
+1. 回答引用 `message_citations`。
+2. Milvus 中该文档的向量索引。
+3. MySQL 文档切片 `document_chunks`。
+4. 入库任务 `rag_tasks`。
+5. 文档元数据 `documents`。
+6. MinIO 原始文件对象。
+
+如果 Milvus 删除失败，后续 MySQL 删除会被阻止，避免出现“业务数据已删除但向量仍可命中”的状态。
+
 ## 重置开发数据
 
 如果需要清空本地开发阶段创建的用户、知识库、文档、任务、会话和授权关系，可执行：
@@ -140,6 +165,23 @@ http://localhost:8000
 - `INGESTION_WORKER_ENABLED=true`。
 - 后端日志中 Worker 是否报错。
 - `rag_tasks` 表的 status 和 attempts。
+
+### 文档任务一直 RUNNING
+
+当前 Worker 会按 `INGESTION_RUNNING_TIMEOUT_MS` 自动恢复超时任务，默认 10 分钟：
+
+- 未达到 `INGESTION_MAX_ATTEMPTS` 时，任务会重新置为 `PENDING` 等待下一轮入库。
+- 已达到最大尝试次数时，任务会标记为 `FAILED`，文档状态也会改为 `FAILED`。
+
+排查时可以查看：
+
+```sql
+select id, document_id, status, attempts, max_attempts, locked_at, error_message
+from rag_tasks
+order by created_at desc;
+```
+
+如果模型接口响应非常慢，可以适当调大 `INGESTION_RUNNING_TIMEOUT_MS`；如果希望更快释放卡住任务，可以调小该值。
 
 ### 文档任务 FAILED
 

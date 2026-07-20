@@ -52,6 +52,17 @@ public class VectorIndexService {
     }
 
     /**
+     * 只删除某个文档在 Milvus 中的向量索引，不删除 MySQL 事实数据。
+     *
+     * <p>文档删除流程会由 {@code DocumentService} 显式清理引用、切片、任务和文档元数据；
+     * 这里仅负责外部向量库，避免重复删除导致日志和排查结果不清晰。</p>
+     */
+    public void deleteVectorIndexByDocument(Long documentId) {
+        milvusVectorStore.deleteByDocument(documentId);
+        log.debug("已删除文档在 Milvus 中的向量索引。documentId={}", documentId);
+    }
+
+    /**
      * 只删除某个知识库在 Milvus 中的索引，不删除 MySQL chunk。
      *
      * <p>该方法用于“重建向量索引”场景：MySQL 是事实库，chunk 文本必须保留；Milvus 是可重建索引，

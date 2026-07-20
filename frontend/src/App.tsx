@@ -4,6 +4,7 @@ import { Button, ErrorMessage } from "./components/ui";
 import { api } from "./lib/api";
 import { clearAuth, getToken } from "./lib/auth";
 import AuthPage from "./pages/AuthPage";
+import AuditLogsPage from "./pages/AuditLogsPage";
 import KnowledgeBasePage from "./pages/KnowledgeBasePage";
 import KnowledgeBasesPage from "./pages/KnowledgeBasesPage";
 import TenantsPage from "./pages/TenantsPage";
@@ -77,6 +78,7 @@ export default function App() {
         <Route path="knowledge-bases/:id" element={<KnowledgeBasePage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="tenants" element={<TenantsPage />} />
+        <Route path="audit-logs" element={<AuditLogsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

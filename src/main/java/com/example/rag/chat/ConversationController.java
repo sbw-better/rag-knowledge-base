@@ -1,6 +1,8 @@
 package com.example.rag.chat;
 
 import com.example.rag.common.ApiResponse;
+import com.example.rag.common.PageRequestParams;
+import com.example.rag.common.PageResponse;
 import com.example.rag.chat.dto.ConversationSummaryResponse;
 import com.example.rag.chat.dto.ConversationResponse;
 import com.example.rag.chat.dto.ConversationUpdateRequest;
@@ -13,8 +15,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.List;
 
 /**
  * 会话历史查询接口。
@@ -43,8 +43,12 @@ public class ConversationController {
     }
 
     @GetMapping
-    ApiResponse<List<ConversationSummaryResponse>> list(@RequestParam Long knowledgeBaseId) {
-        return ApiResponse.ok(chatService.listConversations(knowledgeBaseId));
+    ApiResponse<PageResponse<ConversationSummaryResponse>> list(
+            @RequestParam Long knowledgeBaseId,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer pageSize,
+            @RequestParam(required = false) String keyword) {
+        return ApiResponse.ok(chatService.listConversations(knowledgeBaseId, PageRequestParams.of(page, pageSize, keyword)));
     }
 
     /**

@@ -2,10 +2,13 @@ package com.example.rag.knowledge;
 
 import com.example.rag.auth.CurrentUser;
 import com.example.rag.auth.dto.AdminUserResponse;
+import com.example.rag.audit.AuditLogService;
 import com.example.rag.common.BadRequestException;
 import com.example.rag.common.ForbiddenException;
 import com.example.rag.common.Ids;
 import com.example.rag.common.NotFoundException;
+import com.example.rag.common.PageRequestParams;
+import com.example.rag.common.PageResponse;
 import com.example.rag.domain.KnowledgeBase;
 import com.example.rag.domain.KnowledgeBaseMember;
 import com.example.rag.domain.KbPermission;
@@ -25,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * 知识库应用服务。
@@ -39,16 +43,19 @@ public class KnowledgeBaseService {
     private static final Logger log = LoggerFactory.getLogger(KnowledgeBaseService.class);
 
     public KnowledgeBaseService(KnowledgeBaseMapper knowledgeBaseMapper,
-                                KnowledgeBaseMemberMapper memberMapper,
-                                UserMapper userMapper) {
+                                 KnowledgeBaseMemberMapper memberMapper,
+                                 UserMapper userMapper,
+                                 AuditLogService auditLogService) {
         this.knowledgeBaseMapper = knowledgeBaseMapper;
         this.memberMapper = memberMapper;
         this.userMapper = userMapper;
+        this.auditLogService = auditLogService;
     }
 
     private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final KnowledgeBaseMemberMapper memberMapper;
     private final UserMapper userMapper;
+    private final AuditLogService auditLogService;
 
     @Transactional
     public KnowledgeBaseResponse create(KnowledgeBaseRequest request) {
@@ -63,6 +70,8 @@ public class KnowledgeBaseService {
         knowledgeBaseMapper.insert(kb);
         log.info("知识库创建成功。tenantId={}, ownerId={}, knowledgeBaseId={}, name={}",
                 user.getTenantId(), user.getId(), kb.getId(), kb.getName());
+        auditLogService.record(user, "KNOWLEDGE_BASE_CREATE", "KNOWLEDGE_BASE", kb.getId(),
+                "创建知识库：" + kb.getName());
         return toResponse(kb);
     }
 
@@ -82,6 +91,21 @@ public class KnowledgeBaseService {
         return result;
     }
 
+    /**
+     * 分页查询当前用户可访问的知识库。
+     *
+     * <p>当前版本仍先做权限过滤再分页，避免把 owner / ADMIN / member 的复杂权限逻辑散落到 SQL。
+     * 后续知识库数量很大时，可以把可见范围下推到 Mapper 做真正数据库分页。</p>
+     */
+    public PageResponse<KnowledgeBaseResponse> listPage(PageRequestParams params) {
+        List<KnowledgeBaseResponse> filtered = list().stream()
+                .filter(kb -> matchesKeyword(kb, params.keyword()))
+                .toList();
+        int from = Math.min(params.offset(), filtered.size());
+        int to = Math.min(from + params.pageSize(), filtered.size());
+        return PageResponse.of(filtered.subList(from, to), params.page(), params.pageSize(), filtered.size());
+    }
+
     public KnowledgeBaseResponse get(Long id) {
         return toResponse(requireAccess(id));
     }
@@ -97,6 +121,8 @@ public class KnowledgeBaseService {
         knowledgeBaseMapper.updateById(kb);
         log.info("知识库已更新。tenantId={}, userId={}, knowledgeBaseId={}",
                 kb.getTenantId(), user.getId(), kb.getId());
+        auditLogService.record(user, "KNOWLEDGE_BASE_UPDATE", "KNOWLEDGE_BASE", kb.getId(),
+                "更新知识库配置：" + kb.getName());
         return toResponse(kb);
     }
 
@@ -111,6 +137,8 @@ public class KnowledgeBaseService {
         knowledgeBaseMapper.updateById(kb);
         log.info("知识库已删除。tenantId={}, userId={}, knowledgeBaseId={}",
                 kb.getTenantId(), user.getId(), kb.getId());
+        auditLogService.record(user, "KNOWLEDGE_BASE_DELETE", "KNOWLEDGE_BASE", kb.getId(),
+                "删除知识库：" + kb.getName());
     }
 
     /**
@@ -175,6 +203,7 @@ public class KnowledgeBaseService {
     @Transactional
     public KnowledgeBaseMemberResponse saveMember(Long knowledgeBaseId, KnowledgeBaseMemberRequest request) {
         KnowledgeBase kb = requireManageAccess(knowledgeBaseId);
+        UserAccount operator = CurrentUser.required();
         Long userId = Ids.parse(request.userId(), "userId");
         UserAccount targetUser = userMapper.selectById(userId);
         if (targetUser == null || !targetUser.getTenantId().equals(kb.getTenantId())) {
@@ -206,12 +235,15 @@ public class KnowledgeBaseService {
             log.info("知识库成员权限已更新。knowledgeBaseId={}, userId={}, permission={}",
                     kb.getId(), userId, request.permission());
         }
+        auditLogService.record(operator, "KNOWLEDGE_BASE_MEMBER_SAVE", "KNOWLEDGE_BASE", kb.getId(),
+                "授权用户 " + userId + " 为 " + request.permission());
         return toMemberResponse(member);
     }
 
     @Transactional
     public void removeMember(Long knowledgeBaseId, Long userId) {
         KnowledgeBase kb = requireManageAccess(knowledgeBaseId);
+        UserAccount operator = CurrentUser.required();
         if (kb.getOwnerId().equals(userId)) {
             throw new BadRequestException("不能移除知识库负责人的权限");
         }
@@ -220,6 +252,8 @@ public class KnowledgeBaseService {
             throw new NotFoundException("知识库成员不存在");
         }
         log.info("知识库成员已移除。knowledgeBaseId={}, userId={}", kb.getId(), userId);
+        auditLogService.record(operator, "KNOWLEDGE_BASE_MEMBER_REMOVE", "KNOWLEDGE_BASE", kb.getId(),
+                "移除用户 " + userId + " 的知识库授权");
     }
 
     private boolean canAccess(KnowledgeBase kb, UserAccount user) {
@@ -287,6 +321,15 @@ public class KnowledgeBaseService {
         return user.getRoles().stream()
                 .map(Role::getName)
                 .anyMatch(role -> "ADMIN".equals(role) || "KB_MANAGER".equals(role));
+    }
+
+    private boolean matchesKeyword(KnowledgeBaseResponse kb, String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return true;
+        }
+        String value = keyword.toLowerCase(Locale.ROOT);
+        return (kb.name() != null && kb.name().toLowerCase(Locale.ROOT).contains(value))
+                || (kb.description() != null && kb.description().toLowerCase(Locale.ROOT).contains(value));
     }
 
     private void apply(KnowledgeBase kb, KnowledgeBaseRequest request) {

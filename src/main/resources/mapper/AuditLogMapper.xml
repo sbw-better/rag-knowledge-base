@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.rag.mapper.AuditLogMapper">
+    <select id="selectPage" resultType="com.example.rag.domain.AuditLog">
+        select *
+        from audit_logs
+        where (#{allTenants} = true or tenant_id = #{tenantId})
+          and (#{action} = '' or action = #{action})
+          and (
+            #{keyword} = ''
+            or lower(action) like concat('%', lower(#{keyword}), '%')
+            or lower(target_type) like concat('%', lower(#{keyword}), '%')
+            or lower(detail) like concat('%', lower(#{keyword}), '%')
+            or cast(target_id as char) like concat('%', #{keyword}, '%')
+            or cast(user_id as char) like concat('%', #{keyword}, '%')
+          )
+        order by created_at desc
+        limit #{limit} offset #{offset}
+    </select>
+
+    <select id="countPage" resultType="long">
+        select count(1)
+        from audit_logs
+        where (#{allTenants} = true or tenant_id = #{tenantId})
+          and (#{action} = '' or action = #{action})
+          and (
+            #{keyword} = ''
+            or lower(action) like concat('%', lower(#{keyword}), '%')
+            or lower(target_type) like concat('%', lower(#{keyword}), '%')
+            or lower(detail) like concat('%', lower(#{keyword}), '%')
+            or cast(target_id as char) like concat('%', #{keyword}, '%')
+            or cast(user_id as char) like concat('%', #{keyword}, '%')
+          )
+    </select>
+</mapper>

@@ -76,6 +76,9 @@ MinIO 用于保存上传原始文件，数据库只保存 object key 和文档�
 | `INGESTION_FIXED_DELAY_MS` | `5000` | Worker 轮询间隔 |
 | `INGESTION_MAX_ATTEMPTS` | `3` | 最大重试次数 |
 | `INGESTION_BATCH_SIZE` | `3` | 每批处理数量 |
+| `INGESTION_RUNNING_TIMEOUT_MS` | `600000` | RUNNING 任务超时恢复阈值，默认 10 分钟 |
+
+Worker 每次轮询会先检查长时间停留在 `RUNNING` 的任务。未达到最大尝试次数时自动重新置为 `PENDING`，达到上限时标记为 `FAILED`，避免服务重启或模型调用中断后任务永久卡住。
 
 ## 检索权重
 

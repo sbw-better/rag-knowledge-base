@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpen, Building2, ChevronDown, Database, LogOut, PanelLeftClose, PanelLeftOpen, Sparkles, Users } from "lucide-react";
+import { BookOpen, Building2, ChevronDown, ClipboardList, Database, LogOut, PanelLeftClose, PanelLeftOpen, Sparkles, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
 import { Button } from "../components/ui";
@@ -138,6 +138,20 @@ export default function WorkspaceLayout({ user }: { user: UserResponse | null })
               >
                 <Building2 className="h-4 w-4" />
                 <span className={cn(sidebarCollapsed && "sr-only")}>租户管理</span>
+              </NavLink>
+              <NavLink
+                to="/app/audit-logs"
+                title="审计日志"
+                className={({ isActive }) =>
+                  cn(
+                    "mt-1 flex items-center rounded-lg text-sm font-medium transition",
+                    sidebarCollapsed ? "h-10 justify-center px-0" : "h-10 gap-2 px-3",
+                    isActive ? "bg-emerald-50 text-emerald-800" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                  )
+                }
+              >
+                <ClipboardList className="h-4 w-4" />
+                <span className={cn(sidebarCollapsed && "sr-only")}>审计日志</span>
               </NavLink>
             </>
           ) : null}

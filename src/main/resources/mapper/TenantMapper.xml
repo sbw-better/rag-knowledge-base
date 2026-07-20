@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.rag.mapper.TenantMapper">
+    <select id="selectByName" resultType="com.example.rag.domain.Tenant">
+        select * from tenants
+        where name = #{name}
+        limit 1
+    </select>
+
+    <select id="selectByNameIgnoreCase" resultType="com.example.rag.domain.Tenant">
+        select * from tenants
+        where lower(name) = lower(#{name})
+        limit 1
+    </select>
+
+    <select id="selectAllOrderByCreatedAtDesc" resultType="com.example.rag.domain.Tenant">
+        select * from tenants
+        order by created_at desc
+    </select>
+</mapper>

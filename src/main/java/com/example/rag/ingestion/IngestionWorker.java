@@ -78,6 +78,7 @@ public class IngestionWorker {
         if (!properties.ingestion().workerEnabled()) {
             return;
         }
+        recoverTimedOutTasks();
         List<RagTask> tasks = taskMapper.selectRunnable(TaskStatus.PENDING, properties.ingestion().batchSize());
         if (!tasks.isEmpty()) {
             log.info("文档入库 Worker 拉取到待处理任务。count={}", tasks.size());
@@ -85,6 +86,65 @@ public class IngestionWorker {
         for (RagTask task : tasks) {
             transactionTemplate.executeWithoutResult(status -> process(task.getId()));
         }
+    }
+
+    /**
+     * 恢复长时间停留在 RUNNING 的任务。
+     *
+     * <p>数据库任务队列没有 MQ 的 ack/visibility-timeout 机制。若服务在处理文档时被杀掉，
+     * 任务可能已经被标记为 RUNNING，但后续不会再被 {@link #run()} 扫描到。这里根据
+     * {@code locked_at} 和 {@code app.ingestion.running-timeout-ms} 找出超时任务：
+     * 未达到最大尝试次数时重新置为 PENDING，达到上限时标记 FAILED。</p>
+     */
+    void recoverTimedOutTasks() {
+        long timeoutMs = properties.ingestion().runningTimeoutMs();
+        if (timeoutMs <= 0) {
+            return;
+        }
+        Instant threshold = Instant.now().minusMillis(timeoutMs);
+        List<RagTask> timedOutTasks = taskMapper.selectTimedOutRunning(
+                TaskStatus.RUNNING, threshold, properties.ingestion().batchSize());
+        if (timedOutTasks.isEmpty()) {
+            return;
+        }
+        log.warn("发现超时的文档入库任务，准备自动恢复。count={}, timeoutMs={}", timedOutTasks.size(), timeoutMs);
+        for (RagTask task : timedOutTasks) {
+            transactionTemplate.executeWithoutResult(status -> recoverTimedOutTask(task.getId()));
+        }
+    }
+
+    private void recoverTimedOutTask(Long taskId) {
+        RagTask task = taskMapper.selectById(taskId);
+        if (task == null || task.getStatus() != TaskStatus.RUNNING) {
+            return;
+        }
+        DocumentEntity document = documentMapper.selectById(task.getDocumentId());
+        String message;
+        if (task.getAttempts() >= task.getMaxAttempts()) {
+            message = "文档入库任务执行超时，且已达到最大重试次数";
+            task.setStatus(TaskStatus.FAILED);
+            task.setFinishedAt(Instant.now());
+            if (document != null) {
+                document.setStatus(DocumentStatus.FAILED);
+                document.setErrorMessage(message);
+                documentMapper.updateById(document);
+            }
+            log.error("文档入库任务超时后已标记失败。taskId={}, documentId={}, attempts={}/{}",
+                    task.getId(), task.getDocumentId(), task.getAttempts(), task.getMaxAttempts());
+        } else {
+            message = "文档入库任务执行超时，已自动重新排队";
+            task.setStatus(TaskStatus.PENDING);
+            task.setLockedAt(null);
+            if (document != null) {
+                document.setStatus(DocumentStatus.UPLOADED);
+                document.setErrorMessage(message);
+                documentMapper.updateById(document);
+            }
+            log.warn("文档入库任务超时后已重新排队。taskId={}, documentId={}, attempts={}/{}",
+                    task.getId(), task.getDocumentId(), task.getAttempts(), task.getMaxAttempts());
+        }
+        task.setErrorMessage(message);
+        taskMapper.updateById(task);
     }
 
     /**

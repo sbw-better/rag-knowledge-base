@@ -1,9 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Shield, UserCog, Users } from "lucide-react";
-import { Badge, EmptyState, ErrorMessage, PageHeader, Panel, PanelHeader } from "../components/ui";
+import { Search, Shield, UserCog, Users } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Badge, EmptyState, ErrorMessage, Input, PageHeader, Pagination, Panel, PanelHeader } from "../components/ui";
 import { api } from "../lib/api";
 import { formatDateTime } from "../lib/utils";
 import type { AdminUserResponse } from "../types";
+
+const PAGE_SIZE = 8;
 
 const optionalRoles = [
   { id: "KB_MANAGER", label: "知识库管理员", description: "可创建知识库，并自动成为该知识库的负责人。" },
@@ -12,15 +15,32 @@ const optionalRoles = [
 
 export default function UsersPage() {
   const queryClient = useQueryClient();
+  const [keyword, setKeyword] = useState("");
+  const [page, setPage] = useState(1);
   const usersQuery = useQuery({
-    queryKey: ["admin-users"],
-    queryFn: api.listAdminUsers
+    queryKey: ["admin-users-page", page, PAGE_SIZE, keyword],
+    queryFn: () => api.listAdminUsersPage({ page, pageSize: PAGE_SIZE, keyword })
   });
+  const users = usersQuery.data?.items ?? [];
+  const total = usersQuery.data?.total ?? 0;
+  const totalPages = usersQuery.data?.totalPages ?? 1;
+  const safePage = usersQuery.data?.page ?? page;
+
+  useEffect(() => {
+    setPage(1);
+  }, [keyword]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   const roleMutation = useMutation({
     mutationFn: ({ user, roles }: { user: AdminUserResponse; roles: string[] }) => api.updateUserRoles(user.id, { roles }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-users-page"] });
       queryClient.invalidateQueries({ queryKey: ["me"] });
     }
   });
@@ -48,7 +68,7 @@ export default function UsersPage() {
         <PanelHeader
           title="用户角色"
           description="只在这里分配平台级角色。知识库负责人由创建知识库自动产生，知识库成员在具体知识库里授权。"
-          actions={<Badge tone="slate">用户 {usersQuery.data?.length ?? 0}</Badge>}
+          actions={<Badge tone="slate">用户 {total}</Badge>}
         />
         <div className="border-b border-slate-100 bg-slate-50/60 px-5 py-4">
           <div className="grid gap-3 lg:grid-cols-3">
@@ -56,12 +76,24 @@ export default function UsersPage() {
             <RoleNote title="KB_MANAGER" description="可以创建知识库，并维护自己负责的知识库。" tone="cyan" />
             <RoleNote title="ADMIN" description="拥有平台级管理权限，请谨慎授予。" tone="rose" />
           </div>
+          {(total > 0 || keyword) ? (
+            <div className="relative mt-4 max-w-xl">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                className="pl-9"
+                value={keyword}
+                onChange={(event) => setKeyword(event.target.value)}
+                placeholder="搜索用户名、邮箱或角色"
+              />
+            </div>
+          ) : null}
         </div>
         <div className="space-y-2 p-5">
           <ErrorMessage error={usersQuery.error || roleMutation.error} />
           {usersQuery.isLoading ? <p className="text-sm text-slate-500">正在加载用户...</p> : null}
-          {usersQuery.data?.length === 0 ? <EmptyState title="暂无用户" description="用户注册后会显示在这里。" /> : null}
-          {usersQuery.data?.map((user) => (
+          {total === 0 && !keyword ? <EmptyState title="暂无用户" description="用户注册后会显示在这里。" /> : null}
+          {total === 0 && keyword ? <EmptyState title="没有匹配用户" description="可以更换搜索关键词，或清空搜索条件。" /> : null}
+          {users.map((user) => (
             <article key={user.id} className="rounded-lg border border-slate-200 bg-white px-4 py-3">
               <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-center">
                 <div className="flex min-w-0 items-start gap-3">
@@ -108,6 +140,7 @@ export default function UsersPage() {
             </article>
           ))}
         </div>
+        <Pagination page={safePage} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
       </Panel>
     </div>
   );

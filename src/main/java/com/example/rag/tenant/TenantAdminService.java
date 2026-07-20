@@ -1,5 +1,6 @@
 package com.example.rag.tenant;
 
+import com.example.rag.audit.AuditLogService;
 import com.example.rag.auth.CurrentUser;
 import com.example.rag.common.BadRequestException;
 import com.example.rag.common.ForbiddenException;
@@ -31,11 +32,16 @@ public class TenantAdminService {
     private final TenantMapper tenantMapper;
     private final UserMapper userMapper;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
+    private final AuditLogService auditLogService;
 
-    public TenantAdminService(TenantMapper tenantMapper, UserMapper userMapper, KnowledgeBaseMapper knowledgeBaseMapper) {
+    public TenantAdminService(TenantMapper tenantMapper,
+                              UserMapper userMapper,
+                              KnowledgeBaseMapper knowledgeBaseMapper,
+                              AuditLogService auditLogService) {
         this.tenantMapper = tenantMapper;
         this.userMapper = userMapper;
         this.knowledgeBaseMapper = knowledgeBaseMapper;
+        this.auditLogService = auditLogService;
     }
 
     /**
@@ -68,6 +74,8 @@ public class TenantAdminService {
         Tenant saved = tenantMapper.selectById(tenant.getId());
         log.info("租户创建成功。operatorId={}, operatorTenantId={}, tenantId={}, tenantName={}",
                 current.getId(), current.getTenantId(), tenant.getId(), tenant.getName());
+        auditLogService.record(current, "TENANT_CREATE", "TENANT", tenant.getId(),
+                "创建租户：" + tenant.getName());
         return toResponse(saved);
     }
 

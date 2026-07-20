@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Database, Plus, RefreshCw } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { ArrowRight, Database, Plus, RefreshCw, Search } from "lucide-react";
+import { FormEvent, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Badge, Button, EmptyState, ErrorMessage, Field, Input, Modal, PageHeader, Textarea } from "../components/ui";
+import { Badge, Button, EmptyState, ErrorMessage, Field, Input, Modal, PageHeader, Pagination, Textarea } from "../components/ui";
 import { api } from "../lib/api";
 import { formatDateTime } from "../lib/utils";
+
+const PAGE_SIZE = 9;
 
 export default function KnowledgeBasesPage() {
   const navigate = useNavigate();
@@ -16,24 +18,41 @@ export default function KnowledgeBasesPage() {
   const [chunkOverlap, setChunkOverlap] = useState(120);
   const [topK, setTopK] = useState(5);
   const [minScore, setMinScore] = useState(0);
+  const [keyword, setKeyword] = useState("");
+  const [page, setPage] = useState(1);
   const requestedCreateOpen = searchParams.get("create") === "1";
 
   const listQuery = useQuery({
-    queryKey: ["knowledge-bases"],
-    queryFn: api.listKnowledgeBases
+    queryKey: ["knowledge-bases-page", page, PAGE_SIZE, keyword],
+    queryFn: () => api.listKnowledgeBasesPage({ page, pageSize: PAGE_SIZE, keyword })
   });
   const meQuery = useQuery({
     queryKey: ["me"],
     queryFn: api.me
   });
-  const knowledgeBases = Array.isArray(listQuery.data) ? listQuery.data : [];
+  const pageData = listQuery.data;
+  const visibleKnowledgeBases = pageData?.items ?? [];
+  const total = pageData?.total ?? 0;
+  const safePage = pageData?.page ?? page;
+  const totalPages = pageData?.totalPages ?? 1;
   const canCreateKnowledgeBase = Boolean(meQuery.data?.roles.some((role) => role === "ADMIN" || role === "KB_MANAGER"));
   const createOpen = canCreateKnowledgeBase && requestedCreateOpen;
+
+  useEffect(() => {
+    setPage(1);
+  }, [keyword]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   const createMutation = useMutation({
     mutationFn: () => api.createKnowledgeBase({ name: name.trim(), description: description.trim(), chunkSize, chunkOverlap, topK, minScore }),
     onSuccess: (kb) => {
       queryClient.invalidateQueries({ queryKey: ["knowledge-bases"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-bases-page"] });
       setName("");
       setDescription("");
       setChunkSize(800);
@@ -84,7 +103,20 @@ export default function KnowledgeBasesPage() {
 
       {listQuery.isLoading ? <div className="text-sm text-slate-500">正在加载知识库...</div> : null}
       <ErrorMessage error={listQuery.error} />
-      {!listQuery.isLoading && !listQuery.error && knowledgeBases.length === 0 ? (
+      {(total > 0 || keyword) ? (
+        <div className="mb-4 rounded-lg border border-slate-200 bg-white p-3 shadow-sm shadow-slate-900/5">
+          <div className="relative max-w-xl">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input
+              className="pl-9"
+              value={keyword}
+              onChange={(event) => setKeyword(event.target.value)}
+              placeholder="搜索知识库名称或描述"
+            />
+          </div>
+        </div>
+      ) : null}
+      {!listQuery.isLoading && !listQuery.error && total === 0 && !keyword ? (
         <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm shadow-slate-900/5">
           <EmptyState
             title="还没有可用知识库"
@@ -92,9 +124,14 @@ export default function KnowledgeBasesPage() {
           />
         </div>
       ) : null}
+      {!listQuery.isLoading && keyword && total === 0 ? (
+        <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm shadow-slate-900/5">
+          <EmptyState title="没有匹配的知识库" description="可以更换搜索关键词，或清空搜索条件后查看全部知识库。" />
+        </div>
+      ) : null}
 
       <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {knowledgeBases.map((kb) => (
+        {visibleKnowledgeBases.map((kb) => (
           <button
             key={kb.id}
             className="group rounded-lg border border-slate-200 bg-white p-4 text-left shadow-sm shadow-slate-900/5 transition hover:border-emerald-200 hover:shadow-md hover:shadow-emerald-900/5"
@@ -115,6 +152,7 @@ export default function KnowledgeBasesPage() {
           </button>
         ))}
       </div>
+      <Pagination page={safePage} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
 
       <Modal open={createOpen} title="创建知识库" description="建议一个业务主题对应一个知识库。切片和召回参数可以先使用默认值，后续在设置中调整。" onClose={closeCreate}>
         <form onSubmit={submit} className="space-y-4 p-5">
