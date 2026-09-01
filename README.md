@@ -60,6 +60,7 @@ npm run dev
 - [测试方案](docs/10-test-plan.md)
 - [运维手册](docs/11-operations.md)
 - [生产级演进路线](docs/12-roadmap.md)
+- [当前状态与交接记录](docs/14-current-status-handoff.md)
 
 ## 技术栈
 
@@ -141,6 +142,9 @@ cd ..
 
 # 端到端冒烟测试，默认清理本轮创建的测试知识库
 powershell -ExecutionPolicy Bypass -File .\scripts\e2e-smoke.ps1 -AdminEmail your-admin@example.com
+
+# 可选：清理历史 codex-e2e-* 测试账号和关联 MySQL 数据
+.\scripts\cleanup-e2e-data.ps1 -Force
 
 # Docker 依赖服务
 docker compose up -d mysql minio milvus

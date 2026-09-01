@@ -20,5 +20,10 @@ public enum ChatAnswerStatus {
     /**
      * 知识库有资料，但本次问题没有检索到可用上下文。
      */
-    NO_CONTEXT
+    NO_CONTEXT,
+
+    /**
+     * 用户输入是问候、感谢或轻量闲聊，不需要检索知识库。
+     */
+    CASUAL
 }

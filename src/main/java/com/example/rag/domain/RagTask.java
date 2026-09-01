@@ -20,6 +20,7 @@ public class RagTask {
     private Long id;
     private Long tenantId;
     private Long documentId;
+    private Long knowledgeBaseId;
     private TaskType type;
     private TaskStatus status;
 
@@ -33,6 +34,7 @@ public class RagTask {
      * 任务失败时的错误摘要，前端任务列表会展示该信息。
      */
     private String errorMessage;
+    private boolean cancelRequested;
 
     /**
      * 任务锁定、开始和结束时间，用于排查任务是否卡住、耗时多久。
@@ -68,6 +70,14 @@ public class RagTask {
 
     public void setDocumentId(Long documentId) {
         this.documentId = documentId;
+    }
+
+    public Long getKnowledgeBaseId() {
+        return knowledgeBaseId;
+    }
+
+    public void setKnowledgeBaseId(Long knowledgeBaseId) {
+        this.knowledgeBaseId = knowledgeBaseId;
     }
 
     public TaskType getType() {
@@ -108,6 +118,14 @@ public class RagTask {
 
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
+    }
+
+    public boolean isCancelRequested() {
+        return cancelRequested;
+    }
+
+    public void setCancelRequested(boolean cancelRequested) {
+        this.cancelRequested = cancelRequested;
     }
 
     public Instant getLockedAt() {

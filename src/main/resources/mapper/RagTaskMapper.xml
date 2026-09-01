@@ -14,16 +14,86 @@
         limit 1
     </select>
 
+    <select id="countPageByKnowledgeBaseId" resultType="long">
+        select count(1)
+        from rag_tasks t
+        left join documents d on d.id = t.document_id
+        left join knowledge_bases kb on kb.id = coalesce(t.knowledge_base_id, d.knowledge_base_id)
+        where t.tenant_id = #{tenantId}
+          and kb.id = #{knowledgeBaseId}
+          and (#{type} is null or t.type = #{type})
+          and (#{status} is null or t.status = #{status})
+          and (
+            #{keyword} = ''
+            or lower(t.type) like concat('%', lower(#{keyword}), '%')
+            or lower(t.status) like concat('%', lower(#{keyword}), '%')
+            or lower(coalesce(d.file_name, '')) like concat('%', lower(#{keyword}), '%')
+            or lower(coalesce(kb.name, '')) like concat('%', lower(#{keyword}), '%')
+          )
+    </select>
+
+    <select id="selectPageByKnowledgeBaseId" resultType="com.example.rag.mapper.TaskListRow">
+        select
+            t.*,
+            kb.name as knowledge_base_name,
+            d.file_name as document_file_name
+        from rag_tasks t
+        left join documents d on d.id = t.document_id
+        left join knowledge_bases kb on kb.id = coalesce(t.knowledge_base_id, d.knowledge_base_id)
+        where t.tenant_id = #{tenantId}
+          and kb.id = #{knowledgeBaseId}
+          and (#{type} is null or t.type = #{type})
+          and (#{status} is null or t.status = #{status})
+          and (
+            #{keyword} = ''
+            or lower(t.type) like concat('%', lower(#{keyword}), '%')
+            or lower(t.status) like concat('%', lower(#{keyword}), '%')
+            or lower(coalesce(d.file_name, '')) like concat('%', lower(#{keyword}), '%')
+            or lower(coalesce(kb.name, '')) like concat('%', lower(#{keyword}), '%')
+          )
+        order by t.created_at desc
+        limit #{limit} offset #{offset}
+    </select>
+
+    <select id="selectStatsByKnowledgeBaseId" resultType="com.example.rag.mapper.TaskStatsRow">
+        select
+            count(1) as total,
+            coalesce(sum(case when t.status = 'PENDING' then 1 else 0 end), 0) as pending,
+            coalesce(sum(case when t.status = 'RUNNING' then 1 else 0 end), 0) as running,
+            coalesce(sum(case when t.status = 'SUCCEEDED' then 1 else 0 end), 0) as succeeded,
+            coalesce(sum(case when t.status = 'FAILED' then 1 else 0 end), 0) as failed,
+            coalesce(sum(case when t.status = 'CANCELLED' then 1 else 0 end), 0) as cancelled,
+            coalesce(sum(case when t.cancel_requested = 1 then 1 else 0 end), 0) as cancel_requested,
+            coalesce(sum(case when t.type = 'INGEST_DOCUMENT' then 1 else 0 end), 0) as ingest_document,
+            coalesce(sum(case when t.type = 'REBUILD_KNOWLEDGE_BASE_INDEX' then 1 else 0 end), 0) as rebuild_knowledge_base_index,
+            cast(coalesce(round(avg(case
+                when t.started_at is not null and t.finished_at is not null
+                then timestampdiff(microsecond, t.started_at, t.finished_at) / 1000
+                else null
+            end)), 0) as signed) as average_duration_ms,
+            cast(coalesce(max(case
+                when t.started_at is not null and t.finished_at is not null
+                then timestampdiff(microsecond, t.started_at, t.finished_at) / 1000
+                else null
+            end), 0) as signed) as max_duration_ms
+        from rag_tasks t
+        left join documents d on d.id = t.document_id
+        left join knowledge_bases kb on kb.id = coalesce(t.knowledge_base_id, d.knowledge_base_id)
+        where t.tenant_id = #{tenantId}
+          and kb.id = #{knowledgeBaseId}
+    </select>
+
     <select id="selectRunnable" resultType="com.example.rag.domain.RagTask">
         select * from rag_tasks
-        where status = #{status}
+        where type = #{type} and status = #{status}
         order by created_at asc
         limit #{limit}
     </select>
 
     <select id="selectTimedOutRunning" resultType="com.example.rag.domain.RagTask">
         select * from rag_tasks
-        where status = #{status}
+        where type = #{type}
+          and status = #{status}
           and locked_at is not null
           and locked_at &lt; #{threshold}
         order by locked_at asc

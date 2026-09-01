@@ -87,12 +87,6 @@ export type KnowledgeBaseResponse = {
   canDelete: boolean;
 };
 
-export type RebuildIndexResponse = {
-  knowledgeBaseId: string;
-  chunkCount: number;
-  rebuiltCount: number;
-};
-
 export type KnowledgeBaseMemberResponse = {
   id: string;
   userId: string;
@@ -120,11 +114,16 @@ export type DocumentResponse = {
 
 export type TaskResponse = {
   id: string;
-  documentId: string;
+  documentId: string | null;
+  knowledgeBaseId: string | null;
   type: string;
   status: string;
   attempts: number;
+  maxAttempts: number;
   errorMessage: string | null;
+  cancelRequested: boolean;
+  lockedAt: string | null;
+  startedAt: string | null;
   createdAt: string;
   finishedAt: string | null;
 };
@@ -137,6 +136,26 @@ export type UploadResponse = {
 export type DocumentItem = {
   document: DocumentResponse;
   task: TaskResponse | null;
+};
+
+export type TaskListItem = {
+  task: TaskResponse;
+  knowledgeBaseName: string | null;
+  documentFileName: string | null;
+};
+
+export type TaskStatsResponse = {
+  total: number;
+  pending: number;
+  running: number;
+  succeeded: number;
+  failed: number;
+  cancelled: number;
+  cancelRequested: number;
+  ingestDocument: number;
+  rebuildKnowledgeBaseIndex: number;
+  averageDurationMs: number;
+  maxDurationMs: number;
 };
 
 export type DocumentChunkResponse = {
@@ -178,7 +197,7 @@ export type ChatResponse = {
   userMessageId: string;
   assistantMessageId: string;
   answer: string;
-  answerStatus?: "ANSWERED" | "EMPTY_KB" | "NO_CONTEXT";
+  answerStatus?: "ANSWERED" | "EMPTY_KB" | "NO_CONTEXT" | "CASUAL";
   citations: Citation[];
 };
 

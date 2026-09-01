@@ -39,6 +39,11 @@ function Import-LocalEnvFile {
 
 Import-LocalEnvFile (Join-Path $projectRoot ".env.local")
 
+if (-not $PSBoundParameters.ContainsKey("Port") -and -not [string]::IsNullOrWhiteSpace($env:SERVER_PORT)) {
+    $Port = [int]$env:SERVER_PORT
+    Write-Host "Using SERVER_PORT from environment: $Port"
+}
+
 New-Item -ItemType Directory -Force -Path "logs" | Out-Null
 
 Write-Host "Starting infrastructure containers..."

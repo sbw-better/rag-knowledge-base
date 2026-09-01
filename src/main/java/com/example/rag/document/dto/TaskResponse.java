@@ -11,10 +11,15 @@ import java.time.Instant;
 public record TaskResponse(
         String id,
         String documentId,
+        String knowledgeBaseId,
         String type,
         String status,
         int attempts,
+        int maxAttempts,
         String errorMessage,
+        boolean cancelRequested,
+        Instant lockedAt,
+        Instant startedAt,
         Instant createdAt,
         Instant finishedAt
 ) {

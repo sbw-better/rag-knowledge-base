@@ -56,8 +56,27 @@ docker exec -it ragkb-mysql mysql -urag -prag ragkb
 select id, email, display_name from users;
 select id, name, deleted from knowledge_bases;
 select id, file_name, status, knowledge_base_id from documents order by created_at desc;
-select id, document_id, status, attempts, error_message from rag_tasks order by created_at desc;
+select id, type, document_id, knowledge_base_id, status, attempts, cancel_requested, error_message from rag_tasks order by created_at desc;
 select knowledge_base_id, count(*) from document_chunks group by knowledge_base_id;
+```
+
+也可以在前端运维页“任务中心”查看任务统计概览，或直接调用：
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8080/api/tasks/stats?knowledgeBaseId=你的知识库ID" -Headers @{ Authorization = "Bearer 你的JWT" }
+```
+
+任务中心支持勾选当前页任务后批量操作：
+
+- 批量重试：只会提交已选中的 `FAILED` 任务。
+- 批量取消：只会提交已选中的 `PENDING`、`RUNNING` 且尚未请求取消的任务。
+- 后端批量接口按事务执行；如果某个任务不存在、越权或状态不合法，本次批量操作会整体失败。
+
+对应接口：
+
+```text
+POST /api/tasks/batch/retry
+POST /api/tasks/batch/cancel
 ```
 
 ## 执行端到端冒烟测试
@@ -71,6 +90,24 @@ powershell -ExecutionPolicy Bypass -File .\scripts\e2e-smoke.ps1 -AdminEmail you
 
 脚本会自动注册测试用户、创建知识库、授权成员、上传样例文档、等待入库、执行检索和问答、验证会话恢复和审计日志。
 默认会删除本轮创建的测试文档和知识库；如需保留现场用于排查，添加 `-KeepData`。
+
+如果历史冒烟测试留下了 `codex-e2e-*` 测试账号，可以先 dry-run 查看命中范围：
+
+```powershell
+.\scripts\cleanup-e2e-data.ps1
+```
+
+确认后执行清理：
+
+```powershell
+.\scripts\cleanup-e2e-data.ps1 -Force
+```
+
+或者在冒烟测试前自动清理旧 E2E 数据：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\e2e-smoke.ps1 -CleanupBefore
+```
 
 ## 文档删除一致性
 
@@ -182,6 +219,14 @@ order by created_at desc;
 ```
 
 如果模型接口响应非常慢，可以适当调大 `INGESTION_RUNNING_TIMEOUT_MS`；如果希望更快释放卡住任务，可以调小该值。
+
+运维页“任务中心”支持对 `RUNNING` 任务发起取消请求。取消是协作式的：系统会先设置 `cancel_requested=1`，Worker 在解析、切片、删除旧向量、写入新向量等步骤边界检查到请求后，再把任务标记为 `CANCELLED`。
+
+```sql
+select id, type, status, cancel_requested, locked_at, started_at, finished_at, error_message
+from rag_tasks
+order by created_at desc;
+```
 
 ### 文档任务 FAILED
 

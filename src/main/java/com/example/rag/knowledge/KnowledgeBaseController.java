@@ -6,13 +6,13 @@ import com.example.rag.common.PageRequestParams;
 import com.example.rag.common.PageResponse;
 import com.example.rag.document.DocumentService;
 import com.example.rag.document.dto.DocumentItem;
+import com.example.rag.document.dto.TaskResponse;
 import com.example.rag.document.dto.UploadResponse;
 import com.example.rag.knowledge.dto.KnowledgeBaseRequest;
 import com.example.rag.knowledge.dto.KnowledgeBaseMemberRequest;
 import com.example.rag.knowledge.dto.KnowledgeBaseMemberResponse;
 import com.example.rag.knowledge.dto.KnowledgeBaseResponse;
 import com.example.rag.retrieval.IndexMaintenanceService;
-import com.example.rag.retrieval.dto.RebuildIndexResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -151,14 +151,14 @@ public class KnowledgeBaseController {
     }
 
     /**
-     * 从 MySQL 文档切片重建 Milvus 向量索引。
+     * 创建从 MySQL 文档切片重建 Milvus 向量索引的后台任务。
      *
      * <p>该接口用于 Milvus 数据丢失、collection 重建、模型维度确认后重新生成索引。
-     * 只有知识库 owner 或 ADMIN 可以执行。</p>
+     * 具备知识库管理权限的用户可以执行。</p>
      */
     @PostMapping("/{id}/rebuild-index")
-    ApiResponse<RebuildIndexResponse> rebuildIndex(@PathVariable Long id) {
-        return ApiResponse.ok(indexMaintenanceService.rebuildKnowledgeBase(id));
+    ApiResponse<TaskResponse> rebuildIndex(@PathVariable Long id) {
+        return ApiResponse.ok(indexMaintenanceService.enqueueKnowledgeBaseRebuild(id));
     }
 
     /**

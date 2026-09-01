@@ -18,6 +18,8 @@ class PromptBuilderTest {
         List<Map<String, String>> messages = new PromptBuilder().build("支持什么？", List.of(hit));
 
         assertThat(messages).hasSize(2);
+        assertThat(messages.get(0).get("content"))
+                .contains("耐心、可靠的客服同事", "不要使用 Markdown 粗体", "不要照搬原文条款");
         assertThat(messages.get(1).get("content")).contains("manual.txt", "系统支持上传文档", "支持什么");
     }
 }

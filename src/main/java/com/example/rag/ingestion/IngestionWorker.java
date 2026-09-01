@@ -7,6 +7,7 @@ import com.example.rag.domain.DocumentStatus;
 import com.example.rag.domain.KnowledgeBase;
 import com.example.rag.domain.RagTask;
 import com.example.rag.domain.TaskStatus;
+import com.example.rag.domain.TaskType;
 import com.example.rag.mapper.DocumentMapper;
 import com.example.rag.mapper.KnowledgeBaseMapper;
 import com.example.rag.mapper.RagTaskMapper;
@@ -79,12 +80,12 @@ public class IngestionWorker {
             return;
         }
         recoverTimedOutTasks();
-        List<RagTask> tasks = taskMapper.selectRunnable(TaskStatus.PENDING, properties.ingestion().batchSize());
+        List<RagTask> tasks = taskMapper.selectRunnable(TaskType.INGEST_DOCUMENT, TaskStatus.PENDING, properties.ingestion().batchSize());
         if (!tasks.isEmpty()) {
             log.info("文档入库 Worker 拉取到待处理任务。count={}", tasks.size());
         }
         for (RagTask task : tasks) {
-            transactionTemplate.executeWithoutResult(status -> process(task.getId()));
+            process(task.getId());
         }
     }
 
@@ -103,7 +104,7 @@ public class IngestionWorker {
         }
         Instant threshold = Instant.now().minusMillis(timeoutMs);
         List<RagTask> timedOutTasks = taskMapper.selectTimedOutRunning(
-                TaskStatus.RUNNING, threshold, properties.ingestion().batchSize());
+                TaskType.INGEST_DOCUMENT, TaskStatus.RUNNING, threshold, properties.ingestion().batchSize());
         if (timedOutTasks.isEmpty()) {
             return;
         }
@@ -120,7 +121,19 @@ public class IngestionWorker {
         }
         DocumentEntity document = documentMapper.selectById(task.getDocumentId());
         String message;
-        if (task.getAttempts() >= task.getMaxAttempts()) {
+        if (task.isCancelRequested()) {
+            message = "入库任务已取消";
+            task.setStatus(TaskStatus.CANCELLED);
+            task.setLockedAt(null);
+            task.setFinishedAt(Instant.now());
+            if (document != null) {
+                document.setStatus(DocumentStatus.FAILED);
+                document.setErrorMessage(message);
+                documentMapper.updateById(document);
+            }
+            log.info("文档入库任务超时恢复时确认取消。taskId={}, documentId={}",
+                    task.getId(), task.getDocumentId());
+        } else if (task.getAttempts() >= task.getMaxAttempts()) {
             message = "文档入库任务执行超时，且已达到最大重试次数";
             task.setStatus(TaskStatus.FAILED);
             task.setFinishedAt(Instant.now());
@@ -135,6 +148,7 @@ public class IngestionWorker {
             message = "文档入库任务执行超时，已自动重新排队";
             task.setStatus(TaskStatus.PENDING);
             task.setLockedAt(null);
+            task.setCancelRequested(false);
             if (document != null) {
                 document.setStatus(DocumentStatus.UPLOADED);
                 document.setErrorMessage(message);
@@ -162,6 +176,12 @@ public class IngestionWorker {
         if (document == null) {
             throw new BadRequestException("文档不存在");
         }
+        if (task.isCancelRequested()) {
+            markCancelled(task, document, "入库任务已取消");
+            documentMapper.updateById(document);
+            taskMapper.updateById(task);
+            return;
+        }
         KnowledgeBase kb = knowledgeBaseMapper.selectById(document.getKnowledgeBaseId());
         if (kb == null || kb.isDeleted()) {
             throw new BadRequestException("知识库不存在");
@@ -177,10 +197,12 @@ public class IngestionWorker {
             taskMapper.updateById(task);
             documentMapper.updateById(document);
 
+            ensureNotCancelled(task);
             String text;
             try (InputStream inputStream = storageService.open(document.getObjectKey())) {
                 text = parserService.parse(inputStream);
             }
+            ensureNotCancelled(task);
             log.debug("文档解析完成。taskId={}, documentId={}, textLength={}",
                     task.getId(), document.getId(), text.length());
             List<String> chunks = textChunker.split(text, kb.getChunkSize(), kb.getChunkOverlap());
@@ -189,8 +211,10 @@ public class IngestionWorker {
             }
             log.info("文档切片完成。taskId={}, documentId={}, chunks={}, chunkSize={}, overlap={}",
                     task.getId(), document.getId(), chunks.size(), kb.getChunkSize(), kb.getChunkOverlap());
+            ensureNotCancelled(task);
             vectorIndexService.deleteByDocument(document.getId());
             for (int i = 0; i < chunks.size(); i++) {
+                ensureNotCancelled(task);
                 Map<String, Object> metadata = Map.of("fileName", document.getFileName(), "chunkIndex", i);
                 vectorIndexService.saveChunk(document, i, chunks.get(i), objectMapper.writeValueAsString(metadata),
                         embeddingClient.embed(chunks.get(i)));
@@ -202,6 +226,9 @@ public class IngestionWorker {
             task.setErrorMessage(null);
             log.info("文档入库任务执行成功。taskId={}, documentId={}, chunks={}",
                     task.getId(), document.getId(), chunks.size());
+        } catch (TaskCancelledException ex) {
+            markCancelled(task, document, ex.getMessage());
+            log.info("文档入库任务已取消。taskId={}, documentId={}", task.getId(), document.getId());
         } catch (Throwable ex) {
             log.error("文档入库任务执行失败。taskId={}, documentId={}, fileName={}, attempt={}/{}",
                     task.getId(),
@@ -220,6 +247,30 @@ public class IngestionWorker {
         } finally {
             documentMapper.updateById(document);
             taskMapper.updateById(task);
+        }
+    }
+
+    private void ensureNotCancelled(RagTask task) {
+        RagTask latest = taskMapper.selectById(task.getId());
+        if (latest != null && latest.isCancelRequested()) {
+            task.setCancelRequested(true);
+            throw new TaskCancelledException("入库任务已取消");
+        }
+    }
+
+    private void markCancelled(RagTask task, DocumentEntity document, String message) {
+        task.setStatus(TaskStatus.CANCELLED);
+        task.setCancelRequested(true);
+        task.setErrorMessage(message);
+        task.setLockedAt(null);
+        task.setFinishedAt(Instant.now());
+        document.setStatus(DocumentStatus.FAILED);
+        document.setErrorMessage(message);
+    }
+
+    private static class TaskCancelledException extends RuntimeException {
+        TaskCancelledException(String message) {
+            super(message);
         }
     }
 }

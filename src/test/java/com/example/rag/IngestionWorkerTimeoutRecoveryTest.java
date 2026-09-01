@@ -5,6 +5,7 @@ import com.example.rag.domain.DocumentEntity;
 import com.example.rag.domain.DocumentStatus;
 import com.example.rag.domain.RagTask;
 import com.example.rag.domain.TaskStatus;
+import com.example.rag.domain.TaskType;
 import com.example.rag.mapper.DocumentMapper;
 import com.example.rag.mapper.KnowledgeBaseMapper;
 import com.example.rag.mapper.RagTaskMapper;
@@ -39,7 +40,7 @@ class IngestionWorkerTimeoutRecoveryTest {
         RagTask task = runningTask(100L, 200L, 1, 3);
         DocumentEntity document = document(200L);
         IngestionWorker worker = worker();
-        when(taskMapper.selectTimedOutRunning(eq(TaskStatus.RUNNING), any(Instant.class), eq(2))).thenReturn(List.of(task));
+        when(taskMapper.selectTimedOutRunning(eq(TaskType.INGEST_DOCUMENT), eq(TaskStatus.RUNNING), any(Instant.class), eq(2))).thenReturn(List.of(task));
         when(taskMapper.selectById(100L)).thenReturn(task);
         when(documentMapper.selectById(200L)).thenReturn(document);
 
@@ -58,7 +59,7 @@ class IngestionWorkerTimeoutRecoveryTest {
         RagTask task = runningTask(101L, 201L, 3, 3);
         DocumentEntity document = document(201L);
         IngestionWorker worker = worker();
-        when(taskMapper.selectTimedOutRunning(eq(TaskStatus.RUNNING), any(Instant.class), eq(2))).thenReturn(List.of(task));
+        when(taskMapper.selectTimedOutRunning(eq(TaskType.INGEST_DOCUMENT), eq(TaskStatus.RUNNING), any(Instant.class), eq(2))).thenReturn(List.of(task));
         when(taskMapper.selectById(101L)).thenReturn(task);
         when(documentMapper.selectById(201L)).thenReturn(document);
 
@@ -68,6 +69,26 @@ class IngestionWorkerTimeoutRecoveryTest {
         assertThat(task.getFinishedAt()).isNotNull();
         assertThat(task.getErrorMessage()).contains("最大重试次数");
         assertThat(document.getStatus()).isEqualTo(DocumentStatus.FAILED);
+        verify(taskMapper).updateById(task);
+        verify(documentMapper).updateById(document);
+    }
+
+    @Test
+    void cancelledRunningTaskIsMarkedCancelledBeforeProcessing() {
+        RagTask task = runningTask(102L, 202L, 1, 3);
+        task.setCancelRequested(true);
+        DocumentEntity document = document(202L);
+        IngestionWorker worker = worker();
+        when(taskMapper.selectById(102L)).thenReturn(task);
+        when(documentMapper.selectById(202L)).thenReturn(document);
+
+        worker.process(102L);
+
+        assertThat(task.getStatus()).isEqualTo(TaskStatus.CANCELLED);
+        assertThat(task.getFinishedAt()).isNotNull();
+        assertThat(task.getErrorMessage()).contains("取消");
+        assertThat(document.getStatus()).isEqualTo(DocumentStatus.FAILED);
+        assertThat(document.getErrorMessage()).contains("取消");
         verify(taskMapper).updateById(task);
         verify(documentMapper).updateById(document);
     }

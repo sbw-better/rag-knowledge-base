@@ -75,6 +75,24 @@ powershell -ExecutionPolicy Bypass -File .\scripts\e2e-smoke.ps1 -AdminEmail you
 powershell -ExecutionPolicy Bypass -File .\scripts\e2e-smoke.ps1 -AdminEmail your-admin@example.com -KeepData
 ```
 
+若本地已经积累了多轮 `codex-e2e-*` 测试账号，可先执行只读扫描：
+
+```powershell
+.\scripts\cleanup-e2e-data.ps1
+```
+
+确认只命中 E2E 数据后再清理：
+
+```powershell
+.\scripts\cleanup-e2e-data.ps1 -Force
+```
+
+也可以在冒烟测试前自动清理旧 E2E 数据：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\e2e-smoke.ps1 -CleanupBefore
+```
+
 ## 手工验收场景
 
 ### 认证

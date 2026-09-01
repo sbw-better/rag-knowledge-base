@@ -104,7 +104,7 @@ class ChatServiceTest {
         ChatResponse response = chatService.chat(new ChatRequest("200", null, "能回答什么？", null));
 
         assertThat(response.answerStatus()).isEqualTo(ChatAnswerStatus.EMPTY_KB);
-        assertThat(response.answer()).contains("还没有可用资料");
+        assertThat(response.answer()).contains("没有可用资料");
         assertThat(response.citations()).isEmpty();
         verify(searchService, never()).searchInternal(any(), any(), any(), ArgumentMatchers.anyInt());
         verify(llmClient, never()).chat(any());
@@ -118,8 +118,20 @@ class ChatServiceTest {
         ChatResponse response = chatService.chat(new ChatRequest("200", null, "没有相关内容的问题", null));
 
         assertThat(response.answerStatus()).isEqualTo(ChatAnswerStatus.NO_CONTEXT);
-        assertThat(response.answer()).contains("没有检索到与问题相关的资料");
+        assertThat(response.answer()).contains("没有在当前知识库里找到");
         assertThat(response.citations()).isEmpty();
+        verify(llmClient, never()).chat(any());
+    }
+
+    @Test
+    void returnsCasualAnswerWithoutSearchingForSmallTalk() {
+        ChatResponse response = chatService.chat(new ChatRequest("200", null, "哈哈", null));
+
+        assertThat(response.answerStatus()).isEqualTo(ChatAnswerStatus.CASUAL);
+        assertThat(response.answer()).contains("哈哈，我在");
+        assertThat(response.citations()).isEmpty();
+        verify(chunkMapper, never()).countByTenantIdAndKnowledgeBaseId(any(), any());
+        verify(searchService, never()).searchInternal(any(), any(), any(), ArgumentMatchers.anyInt());
         verify(llmClient, never()).chat(any());
     }
 

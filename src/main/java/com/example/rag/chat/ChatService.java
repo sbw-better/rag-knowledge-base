@@ -55,8 +55,9 @@ import java.util.concurrent.Executors;
 @Service
 public class ChatService {
     private static final Logger log = LoggerFactory.getLogger(ChatService.class);
-    private static final String EMPTY_KB_ANSWER = "当前知识库还没有可用资料，暂时无法基于知识库回答。请联系知识库负责人上传并完成文档入库后再提问。";
-    private static final String NO_CONTEXT_ANSWER = "当前知识库没有检索到与问题相关的资料，因此无法基于知识库给出可靠回答。你可以换个问法，或联系知识库负责人补充相关文档。";
+    private static final String EMPTY_KB_ANSWER = "我现在还没有可用资料，所以不能负责任地给出知识库答案。可以先请知识库负责人上传并完成文档入库，然后我就能基于资料回答了。";
+    private static final String NO_CONTEXT_ANSWER = "我这次没有在当前知识库里找到能支撑答案的资料。你可以换个更具体的问法，或者让知识库负责人补充相关文档后再问我。";
+    private static final String CASUAL_ANSWER = "哈哈，我在。你可以直接问我知识库里的政策、流程或文档内容，我会尽量用清楚一点的方式回答。";
     private final ExecutorService streamExecutor = Executors.newCachedThreadPool();
 
     private final KnowledgeBaseService knowledgeBaseService;
@@ -104,6 +105,9 @@ public class ChatService {
                 : loadConversation(user, Ids.parse(request.conversationId(), "conversationId"));
 
         MessageEntity userMessage = saveMessage(conversation, MessageRole.USER, request.question(), null);
+        if (isCasualMessage(request.question())) {
+            return finishWithoutModel(user, kb, conversation, userMessage, CASUAL_ANSWER, ChatAnswerStatus.CASUAL, startedAt);
+        }
         int topK = request.topK() == null ? kb.getTopK() : request.topK();
         if (chunkMapper.countByTenantIdAndKnowledgeBaseId(kb.getTenantId(), kb.getId()) == 0) {
             return finishWithoutModel(user, kb, conversation, userMessage, EMPTY_KB_ANSWER, ChatAnswerStatus.EMPTY_KB, startedAt);
@@ -160,6 +164,10 @@ public class ChatService {
                 : loadConversation(user, Ids.parse(request.conversationId(), "conversationId"));
 
         MessageEntity userMessage = saveMessage(conversation, MessageRole.USER, request.question(), null);
+        if (isCasualMessage(request.question())) {
+            return new PreparedChatStream(user, kb, conversation, userMessage, request, List.of(),
+                    CASUAL_ANSWER, ChatAnswerStatus.CASUAL, startedAt);
+        }
         int topK = request.topK() == null ? kb.getTopK() : request.topK();
         if (chunkMapper.countByTenantIdAndKnowledgeBaseId(kb.getTenantId(), kb.getId()) == 0) {
             return new PreparedChatStream(user, kb, conversation, userMessage, request, List.of(),
@@ -460,6 +468,35 @@ public class ChatService {
             }
         }
         return value;
+    }
+
+    private static boolean isCasualMessage(String question) {
+        String value = question == null ? "" : question.strip().toLowerCase();
+        if (value.isBlank() || value.length() > 12) {
+            return false;
+        }
+        String compact = value
+                .replace("。", "")
+                .replace("！", "")
+                .replace("!", "")
+                .replace("？", "")
+                .replace("?", "")
+                .replace("~", "")
+                .replace("～", "");
+        return List.of(
+                "哈哈",
+                "哈",
+                "嘿嘿",
+                "你好",
+                "您好",
+                "hi",
+                "hello",
+                "谢谢",
+                "感谢",
+                "ok",
+                "好的",
+                "在吗"
+        ).contains(compact);
     }
 
     /**

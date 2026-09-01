@@ -5,6 +5,7 @@ param(
     [string]$MysqlUser = "rag",
     [string]$MysqlPassword = "rag",
     [string]$MysqlDatabase = "ragkb",
+    [switch]$CleanupBefore,
     [switch]$KeepData
 )
 
@@ -15,6 +16,18 @@ $kbId = ""
 $documentId = ""
 $managerToken = ""
 $adminToken = ""
+
+if ($CleanupBefore) {
+    powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "cleanup-e2e-data.ps1") `
+        -MysqlContainer $MysqlContainer `
+        -MysqlUser $MysqlUser `
+        -MysqlPassword $MysqlPassword `
+        -MysqlDatabase $MysqlDatabase `
+        -Force
+    if ($LASTEXITCODE -ne 0) {
+        throw "E2E cleanup before run failed"
+    }
+}
 
 function Write-Pass {
     param([string]$Name, [string]$Detail = "")
@@ -279,6 +292,36 @@ if ($chunks.data.Count -lt 1) {
     throw "Document chunks were not generated"
 }
 Write-Pass "Document chunks can be queried" "chunks=$($chunks.data.Count)"
+
+$rebuildTask = Invoke-Api "Post" "/api/knowledge-bases/$kbId/rebuild-index" $managerToken
+$rebuildTaskId = $rebuildTask.data.id
+if ($rebuildTask.data.type -ne "REBUILD_KNOWLEDGE_BASE_INDEX" -or $rebuildTask.data.status -ne "PENDING") {
+    throw "Rebuild index did not create pending task: $($rebuildTask.data | ConvertTo-Json -Depth 5)"
+}
+Write-Pass "Create async index rebuild task" "taskId=$rebuildTaskId"
+
+$rebuildStatus = ""
+$rebuildError = ""
+for ($i = 0; $i -lt 60; $i++) {
+    Start-Sleep -Seconds 2
+    $task = Invoke-Api "Get" "/api/tasks/$rebuildTaskId" $managerToken
+    $rebuildStatus = $task.data.status
+    $rebuildError = $task.data.errorMessage
+    if ($rebuildStatus -in @("SUCCEEDED", "FAILED")) {
+        break
+    }
+}
+if ($rebuildStatus -ne "SUCCEEDED") {
+    throw "Index rebuild task did not succeed. status=$rebuildStatus error=$rebuildError"
+}
+Write-Pass "Async index rebuild task succeeded" $rebuildError
+
+$tasksPage = Invoke-Api "Get" "/api/tasks?knowledgeBaseId=$kbId&page=1&pageSize=10&type=REBUILD_KNOWLEDGE_BASE_INDEX&status=SUCCEEDED" $managerToken
+$visibleRebuildTasks = @($tasksPage.data.items | Where-Object { $_.task.id -eq $rebuildTaskId })
+if ($visibleRebuildTasks.Count -ne 1) {
+    throw "Task center did not return completed rebuild task"
+}
+Write-Pass "Task center lists rebuild task" "total=$($tasksPage.data.total)"
 
 $search = Invoke-Api "Post" "/api/search" $managerToken @{
     knowledgeBaseId = $kbId

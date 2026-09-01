@@ -18,12 +18,13 @@ import type {
   KnowledgeBaseMemberResponse,
   KnowledgeBaseResponse,
   PageResponse,
-  RebuildIndexResponse,
   SearchMode,
   SearchResponse,
   TenantRequest,
   TenantResponse,
+  TaskListItem,
   TaskResponse,
+  TaskStatsResponse,
   UpdateUserRolesRequest,
   UploadResponse,
   UserResponse
@@ -327,7 +328,7 @@ export const api = {
   },
 
   rebuildKnowledgeBaseIndex(id: string) {
-    return apiClient.post<unknown, RebuildIndexResponse>(`/knowledge-bases/${id}/rebuild-index`);
+    return apiClient.post<unknown, TaskResponse>(`/knowledge-bases/${id}/rebuild-index`);
   },
 
   uploadDocument(knowledgeBaseId: string, file: File) {
@@ -365,6 +366,31 @@ export const api = {
 
   getTask(id: string) {
     return apiClient.get<unknown, TaskResponse>(`/tasks/${id}`);
+  },
+
+  async listTasksPage(params: PageParams & { knowledgeBaseId: string; type?: string; status?: string }) {
+    const data = await apiClient.get<unknown, unknown>("/tasks", { params });
+    return normalizePage<TaskListItem>(data, "任务列表");
+  },
+
+  getTaskStats(knowledgeBaseId: string) {
+    return apiClient.get<unknown, TaskStatsResponse>("/tasks/stats", { params: { knowledgeBaseId } });
+  },
+
+  retryTask(id: string) {
+    return apiClient.post<unknown, TaskResponse>(`/tasks/${id}/retry`);
+  },
+
+  retryTasks(taskIds: string[]) {
+    return apiClient.post<{ taskIds: string[] }, TaskResponse[]>("/tasks/batch/retry", { taskIds });
+  },
+
+  cancelTask(id: string) {
+    return apiClient.post<unknown, TaskResponse>(`/tasks/${id}/cancel`);
+  },
+
+  cancelTasks(taskIds: string[]) {
+    return apiClient.post<{ taskIds: string[] }, TaskResponse[]>("/tasks/batch/cancel", { taskIds });
   },
 
   search(payload: { knowledgeBaseId: string; query: string; mode: SearchMode; topK?: number }) {
