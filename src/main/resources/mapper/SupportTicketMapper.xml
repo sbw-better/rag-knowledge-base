@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.rag.mapper.SupportTicketMapper">
+    <sql id="TicketFilters">
+        tenant_id = #{tenantId}
+        <if test="knowledgeBaseId != null">
+            AND knowledge_base_id = #{knowledgeBaseId}
+        </if>
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        <if test="priority != null and priority != ''">
+            AND priority = #{priority}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (
+                ticket_no LIKE CONCAT('%', #{keyword}, '%')
+                OR customer_name LIKE CONCAT('%', #{keyword}, '%')
+                OR issue_summary LIKE CONCAT('%', #{keyword}, '%')
+                OR customer_question LIKE CONCAT('%', #{keyword}, '%')
+                OR COALESCE(order_no, '') LIKE CONCAT('%', #{keyword}, '%')
+                OR COALESCE(product_name, '') LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+    </sql>
+
+    <select id="selectByIdAndTenantId" resultType="com.example.rag.domain.SupportTicket">
+        SELECT *
+        FROM support_tickets
+        WHERE id = #{id} AND tenant_id = #{tenantId}
+        LIMIT 1
+    </select>
+
+    <select id="countByTenantId" resultType="long">
+        SELECT COUNT(*)
+        FROM support_tickets
+        WHERE <include refid="TicketFilters" />
+    </select>
+
+    <select id="selectPageByTenantId" resultType="com.example.rag.domain.SupportTicket">
+        SELECT *
+        FROM support_tickets
+        WHERE <include refid="TicketFilters" />
+        ORDER BY
+            CASE priority
+                WHEN 'URGENT' THEN 0
+                WHEN 'HIGH' THEN 1
+                WHEN 'NORMAL' THEN 2
+                ELSE 3
+            END,
+            updated_at DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+</mapper>

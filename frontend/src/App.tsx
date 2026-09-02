@@ -7,6 +7,7 @@ import AuthPage from "./pages/AuthPage";
 import AuditLogsPage from "./pages/AuditLogsPage";
 import KnowledgeBasePage from "./pages/KnowledgeBasePage";
 import KnowledgeBasesPage from "./pages/KnowledgeBasesPage";
+import SupportTicketsPage from "./pages/SupportTicketsPage";
 import TenantsPage from "./pages/TenantsPage";
 import UsersPage from "./pages/UsersPage";
 import WorkspaceLayout from "./pages/WorkspaceLayout";
@@ -76,6 +77,8 @@ export default function App() {
         <Route index element={<Navigate to="/app/knowledge-bases" replace />} />
         <Route path="knowledge-bases" element={<KnowledgeBasesPage />} />
         <Route path="knowledge-bases/:id" element={<KnowledgeBasePage />} />
+        <Route path="support-tickets" element={<SupportTicketsPage />} />
+        <Route path="support-tickets/:id" element={<SupportTicketsPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="tenants" element={<TenantsPage />} />
         <Route path="audit-logs" element={<AuditLogsPage />} />

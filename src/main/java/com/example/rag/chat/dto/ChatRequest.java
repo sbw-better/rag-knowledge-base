@@ -16,6 +16,9 @@ public record ChatRequest(
         @NotNull String knowledgeBaseId,
         String conversationId,
         @NotBlank String question,
-        @Min(1) @Max(50) Integer topK
+        @Min(1) @Max(50) Integer topK,
+        String businessModule,
+        String businessEntityId,
+        String businessContext
 ) {
 }

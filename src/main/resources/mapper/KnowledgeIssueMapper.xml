@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.rag.mapper.KnowledgeIssueMapper">
+    <sql id="IssueFilters">
+        tenant_id = #{tenantId}
+        AND knowledge_base_id = #{knowledgeBaseId}
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (
+                question LIKE CONCAT('%', #{keyword}, '%')
+                OR COALESCE(reason, '') LIKE CONCAT('%', #{keyword}, '%')
+                OR COALESCE(comment, '') LIKE CONCAT('%', #{keyword}, '%')
+                OR COALESCE(business_module, '') LIKE CONCAT('%', #{keyword}, '%')
+                OR COALESCE(business_entity_id, '') LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+    </sql>
+
+    <select id="countByKnowledgeBaseIdAndStatus" resultType="long">
+        SELECT COUNT(*)
+        FROM knowledge_issues
+        WHERE <include refid="IssueFilters" />
+    </select>
+
+    <select id="selectPageByKnowledgeBaseIdAndStatus" resultType="com.example.rag.domain.KnowledgeIssue">
+        SELECT *
+        FROM knowledge_issues
+        WHERE <include refid="IssueFilters" />
+        ORDER BY
+            CASE WHEN status = 'OPEN' THEN 0 ELSE 1 END,
+            created_at DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+</mapper>

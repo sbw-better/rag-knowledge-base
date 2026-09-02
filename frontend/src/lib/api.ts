@@ -3,6 +3,7 @@ import { clearAuth, getToken, setAuth } from "./auth";
 import type {
   ApiResponse,
   AuditLogResponse,
+  AnswerFeedbackResponse,
   AuthResponse,
   AdminUserResponse,
   ChatResponse,
@@ -13,6 +14,8 @@ import type {
   DocumentChunkResponse,
   DocumentItem,
   DocumentResponse,
+  FeedbackRating,
+  KnowledgeIssueResponse,
   KnowledgeBaseRequest,
   KnowledgeBaseMemberRequest,
   KnowledgeBaseMemberResponse,
@@ -20,8 +23,13 @@ import type {
   PageResponse,
   SearchMode,
   SearchResponse,
+  SupportTicketPriority,
+  SupportTicketRequest,
+  SupportTicketResponse,
+  SupportTicketStatus,
   TenantRequest,
   TenantResponse,
+  TicketAssistantReplyResponse,
   TaskListItem,
   TaskResponse,
   TaskStatsResponse,
@@ -397,12 +405,79 @@ export const api = {
     return apiClient.post<unknown, SearchResponse>("/search", payload);
   },
 
-  chat(payload: { knowledgeBaseId: string; conversationId?: string; question: string; topK?: number }) {
+  submitAnswerFeedback(payload: {
+    assistantMessageId: string;
+    userMessageId?: string;
+    rating: FeedbackRating;
+    reason?: string;
+    comment?: string;
+    question?: string;
+    businessModule?: string;
+    businessEntityId?: string;
+  }) {
+    return apiClient.post<unknown, AnswerFeedbackResponse>("/knowledge-feedback/answer-feedback", payload);
+  },
+
+  async listKnowledgeIssuesPage(params: PageParams & { knowledgeBaseId: string; status?: "OPEN" | "RESOLVED" }) {
+    const data = await apiClient.get<unknown, unknown>("/knowledge-feedback/issues", { params });
+    return normalizePage<KnowledgeIssueResponse>(data, "知识缺口");
+  },
+
+  resolveKnowledgeIssue(id: string, resolutionNote?: string) {
+    return apiClient.post<unknown, KnowledgeIssueResponse>(`/knowledge-feedback/issues/${id}/resolve`, { resolutionNote });
+  },
+
+  async listSupportTicketsPage(params: PageParams & {
+    knowledgeBaseId?: string;
+    status?: SupportTicketStatus | "";
+    priority?: SupportTicketPriority | "";
+  }) {
+    const data = await apiClient.get<unknown, unknown>("/support-tickets", { params });
+    return normalizePage<SupportTicketResponse>(data, "售后工单");
+  },
+
+  getSupportTicket(id: string) {
+    return apiClient.get<unknown, SupportTicketResponse>(`/support-tickets/${id}`);
+  },
+
+  createSupportTicket(payload: SupportTicketRequest) {
+    return apiClient.post<unknown, SupportTicketResponse>("/support-tickets", payload);
+  },
+
+  updateSupportTicket(id: string, payload: SupportTicketRequest) {
+    return apiClient.patch<unknown, SupportTicketResponse>(`/support-tickets/${id}`, payload);
+  },
+
+  createDemoSupportTickets(knowledgeBaseId: string) {
+    return apiClient.post<unknown, SupportTicketResponse[]>("/support-tickets/demo", { knowledgeBaseId });
+  },
+
+  generateSupportTicketReply(id: string, instruction?: string) {
+    return apiClient.post<unknown, TicketAssistantReplyResponse>(`/support-tickets/${id}/assistant-reply`, { instruction });
+  },
+
+  chat(payload: {
+    knowledgeBaseId: string;
+    conversationId?: string;
+    question: string;
+    topK?: number;
+    businessModule?: string;
+    businessEntityId?: string;
+    businessContext?: string;
+  }) {
     return apiClient.post<unknown, ChatResponse>("/chat", payload);
   },
 
   async streamChat(
-    payload: { knowledgeBaseId: string; conversationId?: string; question: string; topK?: number },
+    payload: {
+      knowledgeBaseId: string;
+      conversationId?: string;
+      question: string;
+      topK?: number;
+      businessModule?: string;
+      businessEntityId?: string;
+      businessContext?: string;
+    },
     handlers: ChatStreamHandlers,
     signal?: AbortSignal
   ) {

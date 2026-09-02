@@ -10,6 +10,8 @@ import {
   Send,
   Settings,
   ShieldAlert,
+  ThumbsDown,
+  ThumbsUp,
   Trash2,
   Upload,
   UserPlus,
@@ -28,6 +30,8 @@ import type {
   DocumentChunkResponse,
   DocumentItem,
   DocumentResponse,
+  FeedbackRating,
+  KnowledgeIssueResponse,
   KnowledgeBaseMemberRequest,
   MessageItem,
   SearchHit,
@@ -45,13 +49,17 @@ type RecentUpload = {
 const DOCUMENT_PAGE_SIZE = 8;
 const CONVERSATION_PAGE_SIZE = 10;
 const TASK_PAGE_SIZE = 8;
+const ISSUE_PAGE_SIZE = 6;
 type ChatItem = {
   id?: string;
+  userMessageId?: string;
   role: "user" | "assistant";
   content: string;
   answerStatus?: ChatResponse["answerStatus"];
   citations?: Citation[];
   streaming?: boolean;
+  feedbackRating?: FeedbackRating;
+  feedbackPending?: boolean;
 };
 
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
@@ -820,6 +828,7 @@ function ChatPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number })
                     ? {
                         id: data.assistantMessageId,
                         role: "assistant",
+                        userMessageId: data.userMessageId,
                         content: data.answer,
                         answerStatus: data.answerStatus,
                         citations: data.citations,
@@ -860,6 +869,7 @@ function ChatPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number })
                   ? {
                       id: data.assistantMessageId,
                       role: "assistant",
+                      userMessageId: data.userMessageId,
                       content: data.answer,
                       answerStatus: data.answerStatus,
                       citations: data.citations,
@@ -889,6 +899,41 @@ function ChatPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number })
     onSuccess: () => {
       setQuestion("");
       queryClient.invalidateQueries({ queryKey: ["chat-conversations", kbId] });
+    }
+  });
+
+  const feedbackMutation = useMutation({
+    mutationFn: async ({ message, rating, comment }: { message: ChatItem; rating: FeedbackRating; comment?: string }) => {
+      if (!message.id) {
+        throw new Error("回答还没有保存完成，请稍后再评价。");
+      }
+      const pairedUserMessage = findPreviousUserMessage(messages, message.id);
+      setMessages((current) =>
+        current.map((item) => item.id === message.id ? { ...item, feedbackPending: true } : item)
+      );
+      return api.submitAnswerFeedback({
+        assistantMessageId: message.id,
+        userMessageId: message.userMessageId,
+        rating,
+        reason: rating === "NOT_HELPFUL" ? "ANSWER_NEEDS_IMPROVEMENT" : undefined,
+        comment,
+        question: pairedUserMessage?.content
+      });
+    },
+    onSuccess: (feedback) => {
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === feedback.assistantMessageId
+            ? { ...item, feedbackRating: feedback.rating, feedbackPending: false }
+            : item
+        )
+      );
+      queryClient.invalidateQueries({ queryKey: ["knowledge-issues", kbId] });
+    },
+    onError: (_error, variables) => {
+      setMessages((current) =>
+        current.map((item) => item.id === variables.message.id ? { ...item, feedbackPending: false } : item)
+      );
     }
   });
 
@@ -972,6 +1017,21 @@ function ChatPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number })
     if (window.confirm(`确认删除会话「${title}」及其问答历史吗？删除后无法从前端恢复。`)) {
       deleteConversationMutation.mutate(conversation.id);
     }
+  }
+
+  function submitFeedback(message: ChatItem, rating: FeedbackRating) {
+    if (!message.id || message.streaming || message.feedbackPending) {
+      return;
+    }
+    let comment: string | undefined;
+    if (rating === "NOT_HELPFUL") {
+      const input = window.prompt("哪里不够好？可以简单写一句，后续会进入知识缺口处理。");
+      if (input === null) {
+        return;
+      }
+      comment = input.trim() || undefined;
+    }
+    feedbackMutation.mutate({ message, rating, comment });
   }
 
   const currentConversationTitle = conversationId
@@ -1130,13 +1190,20 @@ function ChatPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number })
             {!isRestoringConversation && messages.length === 0 ? <EmptyState title="开始提问" description="可以直接描述你的问题，系统会从当前知识库中查找相关资料后回答。" /> : null}
             {messages.map((message, index) => (
               <div key={message.id ?? `${message.role}-${index}`} className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}>
-                <button
-                  type="button"
-                  disabled={message.role !== "assistant"}
+                <div
+                  role={message.role === "assistant" ? "button" : undefined}
+                  tabIndex={message.role === "assistant" ? 0 : undefined}
                   onClick={() => message.role === "assistant" && message.id ? setSelectedAssistantId(message.id) : undefined}
+                  onKeyDown={(event) => {
+                    if (message.role === "assistant" && message.id && (event.key === "Enter" || event.key === " ")) {
+                      event.preventDefault();
+                      setSelectedAssistantId(message.id);
+                    }
+                  }}
                   className={cn(
                     "max-w-[min(760px,90%)] rounded-lg px-4 py-3 text-left text-sm leading-6 transition",
                     message.role === "user" && "cursor-default bg-emerald-600 text-white",
+                    message.role === "assistant" && "cursor-pointer",
                     message.role === "assistant" && "border bg-white text-slate-800 hover:border-cyan-200 hover:bg-cyan-50/20",
                     message.role === "assistant" && message.id === selectedAssistant?.id
                       ? "border-cyan-300 shadow-sm shadow-cyan-900/10"
@@ -1161,12 +1228,52 @@ function ChatPanel({ kbId, defaultTopK }: { kbId: string; defaultTopK: number })
                       <span className="min-w-0 truncate text-cyan-700">· {summarizeCitationFiles(message.citations)}</span>
                     </span>
                   ) : null}
-                </button>
+                  {message.role === "assistant" && message.id && !message.streaming ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2">
+                      <button
+                        type="button"
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition",
+                          message.feedbackRating === "HELPFUL"
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                        )}
+                        disabled={message.feedbackPending}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          submitFeedback(message, "HELPFUL");
+                        }}
+                      >
+                        <ThumbsUp className="h-3.5 w-3.5" />
+                        有用
+                      </button>
+                      <button
+                        type="button"
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition",
+                          message.feedbackRating === "NOT_HELPFUL"
+                            ? "bg-amber-50 text-amber-700"
+                            : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                        )}
+                        disabled={message.feedbackPending}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          submitFeedback(message, "NOT_HELPFUL");
+                        }}
+                      >
+                        <ThumbsDown className="h-3.5 w-3.5" />
+                        需补充
+                      </button>
+                      {message.feedbackPending ? <span className="text-xs text-slate-400">保存中...</span> : null}
+                    </div>
+                  ) : null}
+                </div>
               </div>
             ))}
           </div>
           <form onSubmit={submit} className="border-t border-slate-100 p-4">
             <ErrorMessage error={chatMutation.error} />
+            <ErrorMessage error={feedbackMutation.error} />
             <ErrorMessage error={renameConversationMutation.error || deleteConversationMutation.error} />
             <div className="mt-3 flex items-center gap-3">
               <Input
@@ -1312,6 +1419,19 @@ function isStaleConversationError(error: unknown) {
 
 function findLatestAssistantId(messages: ChatItem[]) {
   return [...messages].reverse().find((item) => item.role === "assistant")?.id;
+}
+
+function findPreviousUserMessage(messages: ChatItem[], assistantMessageId: string) {
+  const assistantIndex = messages.findIndex((item) => item.id === assistantMessageId && item.role === "assistant");
+  if (assistantIndex < 1) {
+    return undefined;
+  }
+  for (let index = assistantIndex - 1; index >= 0; index -= 1) {
+    if (messages[index].role === "user") {
+      return messages[index];
+    }
+  }
+  return undefined;
 }
 
 function toChatItem(message: MessageItem): ChatItem {
@@ -1738,6 +1858,9 @@ function OperationsPanel({ kb }: { kb: { id: string; name: string; canManageOper
   const [taskStatus, setTaskStatus] = useState("");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(() => new Set());
+  const [issuePage, setIssuePage] = useState(1);
+  const [issueKeyword, setIssueKeyword] = useState("");
+  const [issueStatus, setIssueStatus] = useState<"" | "OPEN" | "RESOLVED">("OPEN");
 
   const rebuildMutation = useMutation({
     mutationFn: () => api.rebuildKnowledgeBaseIndex(kb.id),
@@ -1782,6 +1905,17 @@ function OperationsPanel({ kb }: { kb: { id: string; name: string; canManageOper
       return stats && (stats.running > 0 || stats.cancelRequested > 0) ? 3000 : false;
     }
   });
+  const issuesQuery = useQuery({
+    queryKey: ["knowledge-issues", kb.id, issuePage, ISSUE_PAGE_SIZE, issueKeyword, issueStatus],
+    queryFn: () => api.listKnowledgeIssuesPage({
+      knowledgeBaseId: kb.id,
+      page: issuePage,
+      pageSize: ISSUE_PAGE_SIZE,
+      keyword: issueKeyword,
+      status: issueStatus || undefined
+    }),
+    enabled: kb.canManageOperations
+  });
   const retryTaskMutation = useMutation({
     mutationFn: (taskId: string) => api.retryTask(taskId),
     onSuccess: (task) => {
@@ -1816,6 +1950,12 @@ function OperationsPanel({ kb }: { kb: { id: string; name: string; canManageOper
       tasks.forEach((task) => queryClient.invalidateQueries({ queryKey: ["task", task.id] }));
     }
   });
+  const resolveIssueMutation = useMutation({
+    mutationFn: ({ id, note }: { id: string; note?: string }) => api.resolveKnowledgeIssue(id, note),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["knowledge-issues", kb.id] });
+    }
+  });
   const selectedTaskQuery = useQuery({
     queryKey: ["task", selectedTaskId],
     queryFn: () => api.getTask(selectedTaskId!),
@@ -1829,6 +1969,10 @@ function OperationsPanel({ kb }: { kb: { id: string; name: string; canManageOper
   const taskTotal = tasksQuery.data?.total ?? 0;
   const taskTotalPages = tasksQuery.data?.totalPages ?? 1;
   const safeTaskPage = tasksQuery.data?.page ?? taskPage;
+  const issueItems = issuesQuery.data?.items ?? [];
+  const issueTotal = issuesQuery.data?.total ?? 0;
+  const issueTotalPages = issuesQuery.data?.totalPages ?? 1;
+  const safeIssuePage = issuesQuery.data?.page ?? issuePage;
   const taskBusy = retryTaskMutation.isPending || cancelTaskMutation.isPending || retryTasksMutation.isPending || cancelTasksMutation.isPending;
   const selectedTaskItems = useMemo(
     () => taskItems.filter((item) => selectedTaskIds.has(item.task.id)),
@@ -1859,10 +2003,20 @@ function OperationsPanel({ kb }: { kb: { id: string; name: string; canManageOper
   }, [taskKeyword, taskType, taskStatus]);
 
   useEffect(() => {
+    setIssuePage(1);
+  }, [issueKeyword, issueStatus]);
+
+  useEffect(() => {
     if (taskPage > taskTotalPages) {
       setTaskPage(taskTotalPages);
     }
   }, [taskPage, taskTotalPages]);
+
+  useEffect(() => {
+    if (issuePage > issueTotalPages) {
+      setIssuePage(issueTotalPages);
+    }
+  }, [issuePage, issueTotalPages]);
 
   useEffect(() => {
     const visibleIds = new Set(taskItems.map((item) => item.task.id));
@@ -2038,6 +2192,52 @@ function OperationsPanel({ kb }: { kb: { id: string; name: string; canManageOper
             </div>
             <Pagination page={safeTaskPage} pageSize={TASK_PAGE_SIZE} total={taskTotal} onPageChange={setTaskPage} />
           </Panel>
+
+          <Panel className="min-w-0">
+            <PanelHeader
+              title="知识缺口"
+              description="汇总未命中问题和用户反馈，便于补充资料或调整知识内容。"
+              actions={<Badge tone={issueTotal > 0 ? "amber" : "slate"}>{issueTotal} 条</Badge>}
+            />
+            <div className="space-y-4 p-5">
+              <ErrorMessage error={issuesQuery.error || resolveIssueMutation.error} />
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_160px]">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Input className="pl-9" value={issueKeyword} onChange={(event) => setIssueKeyword(event.target.value)} placeholder="搜索问题、原因或业务编号" />
+                </div>
+                <select
+                  className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
+                  value={issueStatus}
+                  onChange={(event) => setIssueStatus(event.target.value as "" | "OPEN" | "RESOLVED")}
+                >
+                  <option value="">全部状态</option>
+                  <option value="OPEN">待处理</option>
+                  <option value="RESOLVED">已处理</option>
+                </select>
+              </div>
+              {issuesQuery.isLoading ? <div className="text-sm text-slate-500">正在加载知识缺口...</div> : null}
+              {!issuesQuery.isLoading && issueItems.length === 0 ? <EmptyState title="暂无知识缺口" description="未命中问题或需补充反馈会在这里显示。" /> : null}
+              {issueItems.length > 0 ? (
+                <div className="space-y-3">
+                  {issueItems.map((issue) => (
+                    <KnowledgeIssueRow
+                      key={issue.id}
+                      issue={issue}
+                      busy={resolveIssueMutation.isPending}
+                      onResolve={() => {
+                        const note = window.prompt("处理说明，比如已补充哪份资料、调整了哪个知识点。");
+                        if (note !== null) {
+                          resolveIssueMutation.mutate({ id: issue.id, note: note.trim() || undefined });
+                        }
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <Pagination page={safeIssuePage} pageSize={ISSUE_PAGE_SIZE} total={issueTotal} onPageChange={setIssuePage} />
+          </Panel>
         </div>
       ) : null}
 
@@ -2078,6 +2278,49 @@ function OperationsPanel({ kb }: { kb: { id: string; name: string; canManageOper
       />
     </div>
   );
+}
+
+function KnowledgeIssueRow({ issue, busy, onResolve }: { issue: KnowledgeIssueResponse; busy: boolean; onResolve: () => void }) {
+  return (
+    <article className="min-w-0 rounded-lg border border-slate-200 bg-white p-4">
+      <div className="mb-3 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={issue.status === "OPEN" ? "amber" : "green"}>{issueStatusLabel(issue.status)}</Badge>
+            <Badge tone={issue.source === "NEGATIVE_FEEDBACK" ? "rose" : "slate"}>{issueSourceLabel(issue.source)}</Badge>
+            <span className="text-xs text-slate-400">{formatDateTime(issue.createdAt)}</span>
+          </div>
+          <p className="mt-2 whitespace-pre-wrap break-words text-sm font-medium leading-6 text-slate-900">{issue.question}</p>
+        </div>
+        {issue.status === "OPEN" ? (
+          <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={onResolve}>
+            <Check className="h-4 w-4" />
+            已处理
+          </Button>
+        ) : null}
+      </div>
+      {issue.comment ? <p className="mb-2 whitespace-pre-wrap break-words text-sm leading-6 text-amber-700">{issue.comment}</p> : null}
+      {issue.answerSummary ? (
+        <p className="line-clamp-2 whitespace-pre-wrap break-words rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500">
+          {issue.answerSummary}
+        </p>
+      ) : null}
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+        <span>缺口 {shortId(issue.id)}</span>
+        {issue.businessModule ? <span>{issue.businessModule}</span> : null}
+        {issue.businessEntityId ? <span>{issue.businessEntityId}</span> : null}
+        {issue.resolutionNote ? <span className="text-emerald-600">{issue.resolutionNote}</span> : null}
+      </div>
+    </article>
+  );
+}
+
+function issueSourceLabel(source: KnowledgeIssueResponse["source"]) {
+  return source === "NEGATIVE_FEEDBACK" ? "反馈触发" : "未命中";
+}
+
+function issueStatusLabel(status: KnowledgeIssueResponse["status"]) {
+  return status === "RESOLVED" ? "已处理" : "待处理";
 }
 
 function TaskStatsOverview({ stats, loading }: { stats?: TaskStatsResponse; loading: boolean }) {

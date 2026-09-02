@@ -10,6 +10,7 @@ import com.example.rag.domain.KnowledgeBase;
 import com.example.rag.domain.MessageCitation;
 import com.example.rag.domain.MessageEntity;
 import com.example.rag.domain.UserAccount;
+import com.example.rag.feedback.KnowledgeFeedbackService;
 import com.example.rag.knowledge.KnowledgeBaseService;
 import com.example.rag.mapper.ConversationMapper;
 import com.example.rag.mapper.DocumentChunkMapper;
@@ -48,6 +49,7 @@ class ChatServiceTest {
     private final MessageCitationMapper citationMapper = mock(MessageCitationMapper.class);
     private final DocumentMapper documentMapper = mock(DocumentMapper.class);
     private final DocumentChunkMapper chunkMapper = mock(DocumentChunkMapper.class);
+    private final KnowledgeFeedbackService knowledgeFeedbackService = mock(KnowledgeFeedbackService.class);
 
     private ChatService chatService;
     private KnowledgeBase kb;
@@ -89,7 +91,8 @@ class ChatServiceTest {
                 messageMapper,
                 citationMapper,
                 documentMapper,
-                chunkMapper);
+                chunkMapper,
+                knowledgeFeedbackService);
     }
 
     @AfterEach
@@ -101,7 +104,7 @@ class ChatServiceTest {
     void returnsEmptyKnowledgeBaseAnswerWithoutCallingModel() {
         when(chunkMapper.countByTenantIdAndKnowledgeBaseId(1L, 200L)).thenReturn(0);
 
-        ChatResponse response = chatService.chat(new ChatRequest("200", null, "能回答什么？", null));
+        ChatResponse response = chatService.chat(new ChatRequest("200", null, "能回答什么？", null, null, null, null));
 
         assertThat(response.answerStatus()).isEqualTo(ChatAnswerStatus.EMPTY_KB);
         assertThat(response.answer()).contains("没有可用资料");
@@ -115,7 +118,7 @@ class ChatServiceTest {
         when(chunkMapper.countByTenantIdAndKnowledgeBaseId(1L, 200L)).thenReturn(3);
         when(searchService.searchInternal(eq(kb), eq("没有相关内容的问题"), eq(SearchMode.HYBRID), eq(5))).thenReturn(List.of());
 
-        ChatResponse response = chatService.chat(new ChatRequest("200", null, "没有相关内容的问题", null));
+        ChatResponse response = chatService.chat(new ChatRequest("200", null, "没有相关内容的问题", null, null, null, null));
 
         assertThat(response.answerStatus()).isEqualTo(ChatAnswerStatus.NO_CONTEXT);
         assertThat(response.answer()).contains("没有在当前知识库里找到");
@@ -125,7 +128,7 @@ class ChatServiceTest {
 
     @Test
     void returnsCasualAnswerWithoutSearchingForSmallTalk() {
-        ChatResponse response = chatService.chat(new ChatRequest("200", null, "哈哈", null));
+        ChatResponse response = chatService.chat(new ChatRequest("200", null, "哈哈", null, null, null, null));
 
         assertThat(response.answerStatus()).isEqualTo(ChatAnswerStatus.CASUAL);
         assertThat(response.answer()).contains("哈哈，我在");
@@ -149,7 +152,7 @@ class ChatServiceTest {
         when(searchService.searchInternal(eq(kb), eq("我叫啥"), eq(SearchMode.HYBRID), eq(5))).thenReturn(List.of(irrelevantHit));
         when(llmClient.chat(any())).thenReturn("当前资料没有覆盖您的姓名信息。建议您补充相关资料或联系知识库负责人。");
 
-        ChatResponse response = chatService.chat(new ChatRequest("200", null, "我叫啥", null));
+        ChatResponse response = chatService.chat(new ChatRequest("200", null, "我叫啥", null, null, null, null));
 
         assertThat(response.answerStatus()).isEqualTo(ChatAnswerStatus.NO_CONTEXT);
         assertThat(response.citations()).isEmpty();

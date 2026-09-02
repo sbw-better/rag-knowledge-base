@@ -201,6 +201,101 @@ export type ChatResponse = {
   citations: Citation[];
 };
 
+export type SupportTicketStatus = "OPEN" | "IN_PROGRESS" | "WAITING_CUSTOMER" | "RESOLVED" | "CLOSED";
+
+export type SupportTicketPriority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
+
+export type SupportTicketRequest = {
+  knowledgeBaseId: string;
+  ticketNo?: string;
+  status?: SupportTicketStatus;
+  priority?: SupportTicketPriority;
+  category: string;
+  channel: string;
+  customerName: string;
+  customerTier?: string;
+  customerContact?: string;
+  orderNo?: string;
+  orderStatus?: string;
+  productName?: string;
+  productSku?: string;
+  purchasedAt?: string | null;
+  issueSummary: string;
+  customerQuestion: string;
+  latestAiReply?: string | null;
+};
+
+export type SupportTicketResponse = {
+  id: string;
+  knowledgeBaseId: string;
+  knowledgeBaseName: string;
+  ticketNo: string;
+  status: SupportTicketStatus;
+  priority: SupportTicketPriority;
+  category: string;
+  channel: string;
+  customerName: string;
+  customerTier: string | null;
+  customerContact: string | null;
+  orderNo: string | null;
+  orderStatus: string | null;
+  productName: string | null;
+  productSku: string | null;
+  purchasedAt: string | null;
+  issueSummary: string;
+  customerQuestion: string;
+  latestAiReply: string | null;
+  aiConversationId: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TicketAssistantReplyResponse = {
+  ticket: SupportTicketResponse;
+  chat: ChatResponse;
+};
+
+export type FeedbackRating = "HELPFUL" | "NOT_HELPFUL";
+
+export type AnswerFeedbackResponse = {
+  id: string;
+  knowledgeBaseId: string;
+  conversationId: string;
+  userMessageId: string | null;
+  assistantMessageId: string;
+  rating: FeedbackRating;
+  reason: string | null;
+  comment: string | null;
+  businessModule: string | null;
+  businessEntityId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type KnowledgeIssueResponse = {
+  id: string;
+  knowledgeBaseId: string;
+  conversationId: string | null;
+  userMessageId: string | null;
+  assistantMessageId: string | null;
+  feedbackId: string | null;
+  createdBy: string | null;
+  source: "NO_CONTEXT" | "NEGATIVE_FEEDBACK";
+  status: "OPEN" | "RESOLVED";
+  question: string;
+  answerSummary: string | null;
+  reason: string | null;
+  comment: string | null;
+  businessModule: string | null;
+  businessEntityId: string | null;
+  resolutionNote: string | null;
+  resolvedBy: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ChatStreamMeta = {
   conversationId: string;
   userMessageId: string;

@@ -21,6 +21,7 @@ import com.example.rag.chat.dto.ConversationResponse;
 import com.example.rag.chat.dto.ConversationSummaryResponse;
 import com.example.rag.chat.dto.ConversationUpdateRequest;
 import com.example.rag.chat.dto.MessageItem;
+import com.example.rag.feedback.KnowledgeFeedbackService;
 import com.example.rag.knowledge.KnowledgeBaseService;
 import com.example.rag.mapper.ConversationMapper;
 import com.example.rag.mapper.DocumentChunkMapper;
@@ -69,6 +70,7 @@ public class ChatService {
     private final MessageCitationMapper citationMapper;
     private final DocumentMapper documentMapper;
     private final DocumentChunkMapper chunkMapper;
+    private final KnowledgeFeedbackService knowledgeFeedbackService;
 
     public ChatService(KnowledgeBaseService knowledgeBaseService,
                        SearchService searchService,
@@ -78,7 +80,8 @@ public class ChatService {
                        MessageMapper messageMapper,
                        MessageCitationMapper citationMapper,
                        DocumentMapper documentMapper,
-                       DocumentChunkMapper chunkMapper) {
+                       DocumentChunkMapper chunkMapper,
+                       KnowledgeFeedbackService knowledgeFeedbackService) {
         this.knowledgeBaseService = knowledgeBaseService;
         this.searchService = searchService;
         this.promptBuilder = promptBuilder;
@@ -88,6 +91,7 @@ public class ChatService {
         this.citationMapper = citationMapper;
         this.documentMapper = documentMapper;
         this.chunkMapper = chunkMapper;
+        this.knowledgeFeedbackService = knowledgeFeedbackService;
     }
 
     @PreDestroy
@@ -106,22 +110,24 @@ public class ChatService {
 
         MessageEntity userMessage = saveMessage(conversation, MessageRole.USER, request.question(), null);
         if (isCasualMessage(request.question())) {
-            return finishWithoutModel(user, kb, conversation, userMessage, CASUAL_ANSWER, ChatAnswerStatus.CASUAL, startedAt);
+            return finishWithoutModel(user, kb, conversation, userMessage, request, CASUAL_ANSWER, ChatAnswerStatus.CASUAL, startedAt);
         }
         int topK = request.topK() == null ? kb.getTopK() : request.topK();
         if (chunkMapper.countByTenantIdAndKnowledgeBaseId(kb.getTenantId(), kb.getId()) == 0) {
-            return finishWithoutModel(user, kb, conversation, userMessage, EMPTY_KB_ANSWER, ChatAnswerStatus.EMPTY_KB, startedAt);
+            return finishWithoutModel(user, kb, conversation, userMessage, request, EMPTY_KB_ANSWER, ChatAnswerStatus.EMPTY_KB, startedAt);
         }
 
-        List<SearchCandidate> hits = searchService.searchInternal(kb, request.question(), SearchMode.HYBRID, topK);
+        String searchQuestion = searchQuestion(request);
+        List<SearchCandidate> hits = searchService.searchInternal(kb, searchQuestion, SearchMode.HYBRID, topK);
         if (hits.isEmpty()) {
-            return finishWithoutModel(user, kb, conversation, userMessage, NO_CONTEXT_ANSWER, ChatAnswerStatus.NO_CONTEXT, startedAt);
+            return finishWithoutModel(user, kb, conversation, userMessage, request, NO_CONTEXT_ANSWER, ChatAnswerStatus.NO_CONTEXT, startedAt);
         }
 
-        String answer = normalizeAnswerStyle(llmClient.chat(promptBuilder.build(request.question(), hits)));
+        String answer = normalizeAnswerStyle(llmClient.chat(promptBuilder.build(request.question(), hits, request.businessContext())));
         ChatAnswerStatus answerStatus = answerIndicatesNoUsableContext(answer) ? ChatAnswerStatus.NO_CONTEXT : ChatAnswerStatus.ANSWERED;
         MessageEntity assistantMessage = saveMessage(conversation, MessageRole.ASSISTANT, answer, null);
         List<Citation> citations = answerStatus == ChatAnswerStatus.ANSWERED ? saveCitations(assistantMessage, hits) : List.of();
+        recordKnowledgeIssue(user, kb, conversation, userMessage, assistantMessage, answerStatus, request);
 
         conversation.setUpdatedAt(Instant.now());
         conversationMapper.updateById(conversation);
@@ -174,7 +180,8 @@ public class ChatService {
                     EMPTY_KB_ANSWER, ChatAnswerStatus.EMPTY_KB, startedAt);
         }
 
-        List<SearchCandidate> hits = searchService.searchInternal(kb, request.question(), SearchMode.HYBRID, topK);
+        String searchQuestion = searchQuestion(request);
+        List<SearchCandidate> hits = searchService.searchInternal(kb, searchQuestion, SearchMode.HYBRID, topK);
         if (hits.isEmpty()) {
             return new PreparedChatStream(user, kb, conversation, userMessage, request, List.of(),
                     NO_CONTEXT_ANSWER, ChatAnswerStatus.NO_CONTEXT, startedAt);
@@ -196,6 +203,7 @@ public class ChatService {
                         prepared.kb(),
                         prepared.conversation(),
                         prepared.userMessage(),
+                        prepared.request(),
                         prepared.precomputedAnswer(),
                         prepared.status(),
                         prepared.startedAt());
@@ -206,7 +214,7 @@ public class ChatService {
             }
 
             StringBuilder answerBuilder = new StringBuilder();
-            llmClient.chatStream(promptBuilder.build(prepared.request().question(), prepared.hits()), delta -> {
+            llmClient.chatStream(promptBuilder.build(prepared.request().question(), prepared.hits(), prepared.request().businessContext()), delta -> {
                 answerBuilder.append(delta);
                 sendEvent(emitter, "delta", Map.of("content", delta));
             });
@@ -223,6 +231,7 @@ public class ChatService {
         ChatAnswerStatus answerStatus = answerIndicatesNoUsableContext(answer) ? ChatAnswerStatus.NO_CONTEXT : ChatAnswerStatus.ANSWERED;
         MessageEntity assistantMessage = saveMessage(prepared.conversation(), MessageRole.ASSISTANT, answer, null);
         List<Citation> citations = answerStatus == ChatAnswerStatus.ANSWERED ? saveCitations(assistantMessage, prepared.hits()) : List.of();
+        recordKnowledgeIssue(prepared.user(), prepared.kb(), prepared.conversation(), prepared.userMessage(), assistantMessage, answerStatus, prepared.request());
         prepared.conversation().setUpdatedAt(Instant.now());
         conversationMapper.updateById(prepared.conversation());
         log.info("流式问答完成。tenantId={}, userId={}, knowledgeBaseId={}, conversationId={}, status={}, hits={}, citations={}, costMs={}",
@@ -259,10 +268,12 @@ public class ChatService {
                                             KnowledgeBase kb,
                                             Conversation conversation,
                                             MessageEntity userMessage,
+                                            ChatRequest request,
                                             String answer,
                                             ChatAnswerStatus status,
                                             long startedAt) {
         MessageEntity assistantMessage = saveMessage(conversation, MessageRole.ASSISTANT, answer, null);
+        recordKnowledgeIssue(user, kb, conversation, userMessage, assistantMessage, status, request);
         conversation.setUpdatedAt(Instant.now());
         conversationMapper.updateById(conversation);
         log.info("问答未调用模型即完成。tenantId={}, userId={}, knowledgeBaseId={}, conversationId={}, status={}, costMs={}",
@@ -425,6 +436,17 @@ public class ChatService {
         return citations;
     }
 
+    private void recordKnowledgeIssue(UserAccount user,
+                                      KnowledgeBase kb,
+                                      Conversation conversation,
+                                      MessageEntity userMessage,
+                                      MessageEntity assistantMessage,
+                                      ChatAnswerStatus status,
+                                      ChatRequest request) {
+        knowledgeFeedbackService.recordNoContextIssue(user, kb, conversation, userMessage, assistantMessage, status,
+                request.businessModule(), request.businessEntityId());
+    }
+
     private Citation toCitation(MessageCitation citation) {
         return new Citation(
                 citation.getDocumentId().toString(),
@@ -498,6 +520,15 @@ public class ChatService {
                 "在吗"
         ).contains(compact);
     }
+
+    private static String searchQuestion(ChatRequest request) {
+        String businessContext = request.businessContext();
+        if (businessContext == null || businessContext.isBlank()) {
+            return request.question();
+        }
+        return request.question() + "\n\n" + businessContext;
+    }
+
 
     /**
      * 判断模型是否已经明确表示“知识库资料不足以回答”。
