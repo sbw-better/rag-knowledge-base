@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { Badge, Button, EmptyState, ErrorMessage, Field, Input, PageHeader, Panel, PanelHeader } from "../components/ui";
 import { api } from "../lib/api";
 import { formatDateTime } from "../lib/utils";
+import { AdminPageLayout, EntityAvatar, HintPanel, MetricTile, RecordCard, RecordList } from "./admin/components";
 
 /**
  * 租户管理页。
@@ -39,7 +40,7 @@ export default function TenantsPage() {
   const tenants = tenantsQuery.data ?? [];
 
   return (
-    <div className="mx-auto max-w-7xl min-w-0 max-w-full p-4 lg:p-8">
+    <AdminPageLayout>
       <PageHeader
         eyebrow="平台管理"
         title="租户管理"
@@ -63,16 +64,19 @@ export default function TenantsPage() {
 
         <Panel>
           <PanelHeader title="租户列表" description="查看当前平台内已创建的租户及基础规模。" actions={<Badge tone="slate">{tenants.length} 个租户</Badge>} />
-          <div className="space-y-3 p-5">
+          <RecordList
+            className="space-y-3"
+            loading={tenantsQuery.isLoading}
+            loadingText="正在加载租户..."
+            empty={!tenantsQuery.isLoading && tenants.length === 0 ? <EmptyState title="暂无租户" description="创建第一个租户后，会显示在这里。" /> : null}
+          >
             <ErrorMessage error={tenantsQuery.error} />
-            {tenantsQuery.isLoading ? <p className="text-sm text-slate-500">正在加载租户...</p> : null}
-            {!tenantsQuery.isLoading && tenants.length === 0 ? <EmptyState title="暂无租户" description="创建第一个租户后，会显示在这里。" /> : null}
             {tenants.map((tenant) => (
-              <article key={tenant.id} className="grid min-w-0 gap-4 rounded-lg border border-slate-200 bg-white p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+              <RecordCard key={tenant.id} className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
                 <div className="flex min-w-0 items-start gap-3">
-                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-700">
+                  <EntityAvatar tone="green">
                     <Building2 className="h-5 w-5" />
-                  </div>
+                  </EntityAvatar>
                   <div className="min-w-0">
                     <h2 className="truncate text-base font-semibold text-slate-950">{tenant.name}</h2>
                     <p className="mt-1 text-xs text-slate-500">创建于 {formatDateTime(tenant.createdAt)}</p>
@@ -80,30 +84,21 @@ export default function TenantsPage() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 sm:min-w-72">
-                  <Metric label="用户" value={tenant.userCount} />
-                  <Metric label="知识库" value={tenant.knowledgeBaseCount} />
+                  <MetricTile label="用户" value={tenant.userCount} />
+                  <MetricTile label="知识库" value={tenant.knowledgeBaseCount} />
                 </div>
-              </article>
+              </RecordCard>
             ))}
-          </div>
+          </RecordList>
         </Panel>
       </div>
 
-      <div className="mt-5 rounded-lg border border-cyan-100 bg-cyan-50 px-4 py-3 text-sm leading-6 text-cyan-800">
+      <HintPanel className="mt-5">
         <div className="flex gap-2">
           <Users className="mt-0.5 h-4 w-4 shrink-0" />
           <p>当前版本先完成租户可视化和创建能力；用户加入指定租户、跨租户迁移、租户级模型配置会作为后续升级单独实现。</p>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-      <p className="text-xs text-slate-500">{label}</p>
-      <p className="mt-1 text-lg font-semibold text-slate-950">{value}</p>
-    </div>
+      </HintPanel>
+    </AdminPageLayout>
   );
 }

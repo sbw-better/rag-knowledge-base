@@ -14,6 +14,14 @@
         <if test="priority != null and priority != ''">
             AND priority = #{priority}
         </if>
+        <if test="assigneeId != null">
+            AND assignee_id = #{assigneeId}
+        </if>
+        <if test="overdueOnly">
+            AND due_at IS NOT NULL
+            AND due_at &lt; CURRENT_TIMESTAMP(6)
+            AND status NOT IN ('RESOLVED', 'CLOSED')
+        </if>
         <if test="keyword != null and keyword != ''">
             AND (
                 ticket_no LIKE CONCAT('%', #{keyword}, '%')
@@ -44,6 +52,11 @@
         FROM support_tickets
         WHERE <include refid="TicketFilters" />
         ORDER BY
+            CASE
+                WHEN due_at IS NOT NULL AND due_at &lt; CURRENT_TIMESTAMP(6) AND status NOT IN ('RESOLVED', 'CLOSED') THEN 0
+                WHEN due_at IS NOT NULL AND due_at &lt; DATE_ADD(CURRENT_TIMESTAMP(6), INTERVAL 2 HOUR) AND status NOT IN ('RESOLVED', 'CLOSED') THEN 1
+                ELSE 2
+            END,
             CASE priority
                 WHEN 'URGENT' THEN 0
                 WHEN 'HIGH' THEN 1

@@ -10,6 +10,7 @@ import KnowledgeBasesPage from "./pages/KnowledgeBasesPage";
 import SupportTicketsPage from "./pages/SupportTicketsPage";
 import TenantsPage from "./pages/TenantsPage";
 import UsersPage from "./pages/UsersPage";
+import WorkspaceHomePage from "./pages/WorkspaceHomePage";
 import WorkspaceLayout from "./pages/WorkspaceLayout";
 
 /**
@@ -70,11 +71,11 @@ function ProtectedRoute() {
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to={getToken() ? "/app/knowledge-bases" : "/login"} replace />} />
+      <Route path="/" element={<Navigate to={getToken() ? "/app" : "/login"} replace />} />
       <Route path="/login" element={<AuthPage mode="login" />} />
       <Route path="/register" element={<AuthPage mode="register" />} />
       <Route path="/app" element={<ProtectedRoute />}>
-        <Route index element={<Navigate to="/app/knowledge-bases" replace />} />
+        <Route index element={<WorkspaceHomePage />} />
         <Route path="knowledge-bases" element={<KnowledgeBasesPage />} />
         <Route path="knowledge-bases/:id" element={<KnowledgeBasePage />} />
         <Route path="support-tickets" element={<SupportTicketsPage />} />

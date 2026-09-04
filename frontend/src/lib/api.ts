@@ -23,6 +23,7 @@ import type {
   PageResponse,
   SearchMode,
   SearchResponse,
+  SupportTicketEventResponse,
   SupportTicketPriority,
   SupportTicketRequest,
   SupportTicketResponse,
@@ -431,6 +432,8 @@ export const api = {
     knowledgeBaseId?: string;
     status?: SupportTicketStatus | "";
     priority?: SupportTicketPriority | "";
+    mine?: boolean;
+    overdue?: boolean;
   }) {
     const data = await apiClient.get<unknown, unknown>("/support-tickets", { params });
     return normalizePage<SupportTicketResponse>(data, "售后工单");
@@ -440,12 +443,29 @@ export const api = {
     return apiClient.get<unknown, SupportTicketResponse>(`/support-tickets/${id}`);
   },
 
+  async listSupportTicketEvents(id: string) {
+    const data = await apiClient.get<unknown, unknown>(`/support-tickets/${id}/events`);
+    return normalizeArray<SupportTicketEventResponse>(data, "工单时间线");
+  },
+
   createSupportTicket(payload: SupportTicketRequest) {
     return apiClient.post<unknown, SupportTicketResponse>("/support-tickets", payload);
   },
 
   updateSupportTicket(id: string, payload: SupportTicketRequest) {
     return apiClient.patch<unknown, SupportTicketResponse>(`/support-tickets/${id}`, payload);
+  },
+
+  assignSupportTicket(id: string, assigneeId?: string | null, note?: string) {
+    return apiClient.post<unknown, SupportTicketResponse>(`/support-tickets/${id}/assign`, { assigneeId, note });
+  },
+
+  changeSupportTicketStatus(id: string, status: SupportTicketStatus, note?: string) {
+    return apiClient.post<unknown, SupportTicketResponse>(`/support-tickets/${id}/status`, { status, note });
+  },
+
+  addSupportTicketNote(id: string, content: string) {
+    return apiClient.post<unknown, SupportTicketEventResponse>(`/support-tickets/${id}/notes`, { content });
   },
 
   createDemoSupportTickets(knowledgeBaseId: string) {

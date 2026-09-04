@@ -16,6 +16,7 @@ public class SupportTicket {
     private Long tenantId;
     private Long knowledgeBaseId;
     private Long createdBy;
+    private Long assigneeId;
     private String ticketNo;
     private SupportTicketStatus status;
     private SupportTicketPriority priority;
@@ -29,6 +30,7 @@ public class SupportTicket {
     private String productName;
     private String productSku;
     private Instant purchasedAt;
+    private Instant dueAt;
     private String issueSummary;
     private String customerQuestion;
     private String latestAiReply;
@@ -67,6 +69,14 @@ public class SupportTicket {
 
     public void setCreatedBy(Long createdBy) {
         this.createdBy = createdBy;
+    }
+
+    public Long getAssigneeId() {
+        return assigneeId;
+    }
+
+    public void setAssigneeId(Long assigneeId) {
+        this.assigneeId = assigneeId;
     }
 
     public String getTicketNo() {
@@ -171,6 +181,14 @@ public class SupportTicket {
 
     public void setPurchasedAt(Instant purchasedAt) {
         this.purchasedAt = purchasedAt;
+    }
+
+    public Instant getDueAt() {
+        return dueAt;
+    }
+
+    public void setDueAt(Instant dueAt) {
+        this.dueAt = dueAt;
     }
 
     public String getIssueSummary() {

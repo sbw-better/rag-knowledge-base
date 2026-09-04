@@ -1,25 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
-import { ClipboardList, Search } from "lucide-react";
+import { ClipboardList } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Badge, EmptyState, ErrorMessage, Input, PageHeader, Pagination, Panel, PanelHeader } from "../components/ui";
+import { Badge, EmptyState, ErrorMessage, PageHeader, Pagination, Panel, PanelHeader } from "../components/ui";
 import { api } from "../lib/api";
 import { formatDateTime, shortId } from "../lib/utils";
+import { auditActionLabel, auditActionLabels, auditTargetLabel } from "./admin/audit-labels";
+import { AdminPageLayout, EntityAvatar, FilterBar, RecordCard, RecordList, SearchField, SelectField } from "./admin/components";
 
 const PAGE_SIZE = 12;
-
-const actionLabels: Record<string, string> = {
-  TENANT_CREATE: "创建租户",
-  USER_ROLE_UPDATE: "调整用户角色",
-  KNOWLEDGE_BASE_CREATE: "创建知识库",
-  KNOWLEDGE_BASE_UPDATE: "更新知识库",
-  KNOWLEDGE_BASE_DELETE: "删除知识库",
-  KNOWLEDGE_BASE_MEMBER_SAVE: "保存成员授权",
-  KNOWLEDGE_BASE_MEMBER_REMOVE: "移除成员授权",
-  KNOWLEDGE_BASE_INDEX_REBUILD: "重建索引",
-  DOCUMENT_UPLOAD: "上传文档",
-  DOCUMENT_REINGEST: "文档重入库",
-  DOCUMENT_DELETE: "删除文档"
-};
 
 /**
  * 审计日志页。
@@ -53,7 +41,7 @@ export default function AuditLogsPage() {
   }, [page, totalPages]);
 
   return (
-    <div className="mx-auto max-w-7xl min-w-0 max-w-full p-4 lg:p-8">
+    <AdminPageLayout>
       <PageHeader
         eyebrow="平台管理"
         title="审计日志"
@@ -66,45 +54,39 @@ export default function AuditLogsPage() {
           description="按时间倒序展示。日志用于排查问题，不建议作为普通业务数据编辑入口。"
           actions={<Badge tone="slate">{total} 条记录</Badge>}
         />
-        <div className="border-b border-slate-100 bg-slate-50/60 px-5 py-4">
+        <FilterBar>
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_260px]">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <Input
-                className="pl-9"
-                value={keyword}
-                onChange={(event) => setKeyword(event.target.value)}
-                placeholder="搜索动作、对象、用户编号或详情"
-              />
-            </div>
-            <select
-              className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-              value={action}
-              onChange={(event) => setAction(event.target.value)}
-            >
+            <SearchField value={keyword} onChange={setKeyword} placeholder="搜索动作、对象、用户编号或详情" />
+            <SelectField value={action} onChange={setAction}>
               <option value="">全部动作</option>
-              {Object.entries(actionLabels).map(([value, label]) => (
+              {Object.entries(auditActionLabels).map(([value, label]) => (
                 <option key={value} value={value}>{label}</option>
               ))}
-            </select>
+            </SelectField>
           </div>
-        </div>
+        </FilterBar>
 
-        <div className="space-y-2 p-5">
+        <RecordList
+          loading={logsQuery.isLoading}
+          loadingText="正在加载审计日志..."
+          empty={
+            <>
+              {total === 0 && !keyword && !action ? <EmptyState title="暂无审计记录" description="执行创建知识库、授权成员、上传文档等操作后会显示在这里。" /> : null}
+              {total === 0 && (keyword || action) ? <EmptyState title="没有匹配记录" description="可以更换搜索条件，或选择全部动作。" /> : null}
+            </>
+          }
+        >
           <ErrorMessage error={logsQuery.error} />
-          {logsQuery.isLoading ? <p className="text-sm text-slate-500">正在加载审计日志...</p> : null}
-          {total === 0 && !keyword && !action ? <EmptyState title="暂无审计记录" description="执行创建知识库、授权成员、上传文档等操作后会显示在这里。" /> : null}
-          {total === 0 && (keyword || action) ? <EmptyState title="没有匹配记录" description="可以更换搜索条件，或选择全部动作。" /> : null}
           {logs.map((log) => (
-            <article key={log.id} className="grid min-w-0 gap-3 rounded-lg border border-slate-200 bg-white p-4 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center">
+            <RecordCard key={log.id} className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center">
               <div className="flex min-w-0 items-start gap-3">
-                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-cyan-50 text-cyan-700">
+                <EntityAvatar tone="cyan">
                   <ClipboardList className="h-5 w-5" />
-                </div>
+                </EntityAvatar>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-sm font-semibold text-slate-950">{actionLabels[log.action] ?? log.action}</h2>
-                    <Badge tone="cyan">{log.targetType ?? "UNKNOWN"}</Badge>
+                    <h2 className="text-sm font-semibold text-slate-950">{auditActionLabel(log.action)}</h2>
+                    <Badge tone="cyan">{auditTargetLabel(log.targetType)}</Badge>
                     {log.targetId ? <Badge tone="slate">{shortId(log.targetId)}</Badge> : null}
                   </div>
                   <p className="mt-1 break-words text-sm leading-6 text-slate-600">{log.detail || "无详情"}</p>
@@ -114,11 +96,11 @@ export default function AuditLogsPage() {
                 </div>
               </div>
               <p className="text-sm text-slate-500 lg:text-right">{formatDateTime(log.createdAt)}</p>
-            </article>
+            </RecordCard>
           ))}
-        </div>
+        </RecordList>
         <Pagination page={safePage} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
       </Panel>
-    </div>
+    </AdminPageLayout>
   );
 }

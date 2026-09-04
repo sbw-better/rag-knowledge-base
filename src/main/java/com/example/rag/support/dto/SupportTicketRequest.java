@@ -12,6 +12,7 @@ import java.time.Instant;
  */
 public record SupportTicketRequest(
         @NotNull String knowledgeBaseId,
+        String assigneeId,
         String ticketNo,
         SupportTicketStatus status,
         SupportTicketPriority priority,
@@ -25,6 +26,7 @@ public record SupportTicketRequest(
         String productName,
         String productSku,
         Instant purchasedAt,
+        Instant dueAt,
         @NotBlank String issueSummary,
         @NotBlank String customerQuestion,
         String latestAiReply

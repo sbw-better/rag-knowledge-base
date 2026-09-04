@@ -207,6 +207,7 @@ export type SupportTicketPriority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
 
 export type SupportTicketRequest = {
   knowledgeBaseId: string;
+  assigneeId?: string | null;
   ticketNo?: string;
   status?: SupportTicketStatus;
   priority?: SupportTicketPriority;
@@ -220,6 +221,7 @@ export type SupportTicketRequest = {
   productName?: string;
   productSku?: string;
   purchasedAt?: string | null;
+  dueAt?: string | null;
   issueSummary: string;
   customerQuestion: string;
   latestAiReply?: string | null;
@@ -229,6 +231,8 @@ export type SupportTicketResponse = {
   id: string;
   knowledgeBaseId: string;
   knowledgeBaseName: string;
+  assigneeId: string | null;
+  assigneeName: string | null;
   ticketNo: string;
   status: SupportTicketStatus;
   priority: SupportTicketPriority;
@@ -242,6 +246,9 @@ export type SupportTicketResponse = {
   productName: string | null;
   productSku: string | null;
   purchasedAt: string | null;
+  dueAt: string | null;
+  overdue: boolean;
+  dueSoon: boolean;
   issueSummary: string;
   customerQuestion: string;
   latestAiReply: string | null;
@@ -249,6 +256,24 @@ export type SupportTicketResponse = {
   resolvedAt: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type SupportTicketEventType = "CREATED" | "ASSIGNED" | "STATUS_CHANGED" | "INTERNAL_NOTE" | "AI_REPLY_GENERATED" | "REPLY_SAVED";
+
+export type SupportTicketEventResponse = {
+  id: string;
+  ticketId: string;
+  actorId: string;
+  actorName: string | null;
+  eventType: SupportTicketEventType;
+  fromStatus: SupportTicketStatus | null;
+  toStatus: SupportTicketStatus | null;
+  fromAssigneeId: string | null;
+  fromAssigneeName: string | null;
+  toAssigneeId: string | null;
+  toAssigneeName: string | null;
+  note: string | null;
+  createdAt: string;
 };
 
 export type TicketAssistantReplyResponse = {

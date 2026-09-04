@@ -15,12 +15,16 @@ public interface SupportTicketMapper extends BaseMapper<SupportTicket> {
                          @Param("knowledgeBaseId") Long knowledgeBaseId,
                          @Param("status") String status,
                          @Param("priority") String priority,
+                         @Param("assigneeId") Long assigneeId,
+                         @Param("overdueOnly") boolean overdueOnly,
                          @Param("keyword") String keyword);
 
     List<SupportTicket> selectPageByTenantId(@Param("tenantId") Long tenantId,
                                              @Param("knowledgeBaseId") Long knowledgeBaseId,
                                              @Param("status") String status,
                                              @Param("priority") String priority,
+                                             @Param("assigneeId") Long assigneeId,
+                                             @Param("overdueOnly") boolean overdueOnly,
                                              @Param("keyword") String keyword,
                                              @Param("limit") int limit,
                                              @Param("offset") int offset);

@@ -13,7 +13,7 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex max-w-full items-center justify-center gap-2 rounded-lg border text-sm font-medium transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-emerald-100 disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex max-w-full items-center justify-center gap-2 whitespace-nowrap rounded-lg border text-sm font-medium transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-emerald-100 disabled:cursor-not-allowed disabled:opacity-50",
         size === "sm" && "h-8 px-3",
         size === "md" && "h-10 px-4",
         size === "icon" && "h-9 w-9",

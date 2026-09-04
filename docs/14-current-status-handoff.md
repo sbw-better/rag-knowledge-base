@@ -1,6 +1,6 @@
 # 当前状态与交接记录
 
-更新时间：2026-09-02
+更新时间：2026-09-04
 
 本文档用于新开会话、交接开发或阶段复盘。内容基于当前可运行代码和最近一次完整测试结果整理。
 
@@ -98,8 +98,9 @@
 ### 前端工作台
 
 - 登录/注册页。
-- 工作台布局，支持侧边栏收缩。
-- 知识库列表页。
+- 工作台布局支持桌面侧边栏收缩、移动端底部服务导航，导航定义集中在 `workspace-navigation.tsx`。
+- 工作台首页已从入口页调整为概览页，展示工单摘要、知识库状态和管理员最近管理动作。
+- 知识库目录页已调整为目录行结构，展示名称、描述、权限、创建时间和核心检索参数。
 - 知识库详情页：
   - 文档
   - 检索
@@ -107,13 +108,12 @@
   - 成员
   - 配置
   - 运维
-- 用户管理页。
-- 租户管理页。
-- 审计日志页。
-- 售后工单页：工单队列、详情业务上下文、AI 回复生成、引用展示、可编辑回复保存。
+- 用户管理、租户管理、审计日志页复用 `pages/admin` 的管理页容器、筛选栏、记录卡片和审计中文标签。
+- 售后工单页已调整为三段式工作台：工单队列、客户问题/业务信息/AI 回复草稿、处理动作/时间线。
+- 售后工单页支持负责人、状态流转、内部备注、流转历史、SLA 标识、队列多选、批量接手、批量状态流转和示例工单生成。
 - 文档切片查看已从页面底部展开优化为抽屉/弹窗式查看。
 - 运维页提供任务中心、任务统计概览、批量操作栏和任务详情抽屉，可查看完整任务 ID、状态、尝试次数、取消请求、时间线、耗时和错误信息。
-- 页面已做基础响应式适配，但移动端仍是“可用优先”，不是完整移动 App 体验。
+- 已做一次桌面 `1440x900` 和移动约 `390x844` 的视觉 QA，覆盖首页、工单、知识库、用户、租户、审计页面；未发现横向溢出或控件裁切。
 
 ### 运维与测试
 
@@ -169,11 +169,54 @@ src/main/resources
 frontend/src
 ├─ components        轻量通用 UI 组件
 ├─ lib               API Client、认证状态、工具函数
-├─ pages             登录、工作台、知识库、用户、租户、审计等页面
+├─ pages             登录、工作台、工单、知识库、用户、租户、审计等页面
+│  ├─ admin          管理页共享组件、审计中文标签
+│  ├─ knowledge-base 知识库详情页各 Tab 面板
+│  ├─ knowledge-bases 知识库目录页组件
+│  ├─ support-tickets 售后工单队列、详情、侧栏、弹窗组件
+│  └─ workspace-home 工作台首页概览组件
 ├─ types.ts          前端类型定义
 ├─ App.tsx           路由和 Query Client
 └─ styles.css        全局样式
 ```
+
+### 当前未提交改动分组
+
+截至 2026-09-04，本地工作区存在一组连续开发改动，提交前建议按主题拆分：
+
+1. 前端信息架构与页面拆分
+   - `frontend/src/pages/WorkspaceLayout.tsx`
+   - `frontend/src/pages/workspace-navigation.tsx`
+   - `frontend/src/pages/WorkspaceHomePage.tsx`
+   - `frontend/src/pages/workspace-home/`
+   - `frontend/src/pages/admin/`
+   - `frontend/src/pages/KnowledgeBasesPage.tsx`
+   - `frontend/src/pages/knowledge-bases/`
+   - `frontend/src/pages/KnowledgeBasePage.tsx`
+   - `frontend/src/pages/knowledge-base/`
+   - `frontend/src/pages/SupportTicketsPage.tsx`
+   - `frontend/src/pages/support-tickets/`
+   - `frontend/src/components/ui.tsx`
+
+2. 前端 API 和类型扩展
+   - `frontend/src/lib/api.ts`
+   - `frontend/src/types.ts`
+   - `frontend/src/App.tsx`
+
+3. 售后工单流程后端扩展
+   - `src/main/java/com/example/rag/domain/SupportTicket.java`
+   - `src/main/java/com/example/rag/domain/SupportTicketEvent.java`
+   - `src/main/java/com/example/rag/domain/SupportTicketEventType.java`
+   - `src/main/java/com/example/rag/mapper/SupportTicketMapper.java`
+   - `src/main/java/com/example/rag/mapper/SupportTicketEventMapper.java`
+   - `src/main/java/com/example/rag/support/`
+   - `src/main/resources/db/migration/V11__add_support_ticket_workflow.sql`
+   - `src/main/resources/mapper/SupportTicketMapper.xml`
+   - `src/main/resources/mapper/SupportTicketEventMapper.xml`
+
+4. 视觉 QA 临时数据
+   - 本地开发库中创建了 `codex-visual-20260904164436@example.com` 测试账号、`视觉 QA 知识库` 和 3 条示例工单。
+   - 清理前需确认不会影响手工验收；如果要清理，优先写脚本按 `codex-visual-*` 前缀删除，而不是手工删表。
 
 ## 当前主要缺陷与风险
 
@@ -207,9 +250,9 @@ frontend/src
 ### 前端体验仍有优化空间
 
 - 问答历史、引用来源和会话管理已可用，但还可以进一步接近成熟产品体验。
-- 售后工单目前是第一版业务场景，尚未支持负责人、SLA、工单流转历史、内部备注、客户多轮沟通记录和外部系统同步。
-- 移动端当前是基础自适应，不是深度移动端交互。
-- 文档任务、切片、索引维护、审计日志等管理页面还可以继续提升信息层级和操作效率。
+- 售后工单已经支持负责人、SLA、流转历史、内部备注、队列多选、批量接手和批量状态流转，但客户多轮沟通记录、外部系统同步、批量生成回复和批量结果摘要仍未实现。
+- 移动端当前可用且无明显溢出，但工单详情仍是“队列在前、详情在后”的长滚动模式，不是深度移动端分屏/切换交互。
+- 文档任务、切片、索引维护等管理页面还可以继续提升信息层级和操作效率。
 - E2E 脚本会留下测试用户，避免误删真实账号；后续可以增加带前缀的测试账号清理工具。
 
 ### 技术债与工程问题
@@ -222,10 +265,10 @@ frontend/src
 
 ### P0：继续打磨售后业务闭环
 
-1. 工单流转增强
-   - 增加工单负责人、SLA 截止时间、处理备注和状态流转历史。
-   - 区分客户可见回复和客服内部备注。
+1. 工单沟通与批处理
+   - 增加客户补充消息、客服外发回复和内部备注的分流展示。
    - 增加工单关闭/重开动作和权限控制。
+   - 增加批量生成回复、批量操作结果摘要和部分失败提示。
 
 2. 业务看板
    - 展示工单总量、AI 辅助回复数、知识命中率、无答案问题排行和待补充知识数量。
@@ -356,7 +399,7 @@ Invoke-RestMethod -Uri http://localhost:8080/actuator/health
 
 推荐下一步实际开发任务：
 
-1. 给售后工单增加负责人、SLA、状态流转历史和内部备注。
+1. 完善售后工单沟通区：客户补充消息、客服外发回复和内部备注分流展示。
 2. 增加售后运营看板：工单总量、AI 辅助回复数、知识命中率、无答案排行、待补充知识数量。
 3. 在工单详情中展示关联知识缺口，并支持缺口解决后重新生成回复做复检。
 4. 给任务中心增加失败原因聚合、耗时分位统计和批量操作结果摘要。

@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Search, Shield, UserCog, Users } from "lucide-react";
+import { Shield, UserCog, Users } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Badge, EmptyState, ErrorMessage, Input, PageHeader, Pagination, Panel, PanelHeader } from "../components/ui";
+import { Badge, EmptyState, ErrorMessage, PageHeader, Pagination, Panel, PanelHeader } from "../components/ui";
 import { api } from "../lib/api";
 import { formatDateTime } from "../lib/utils";
 import type { AdminUserResponse } from "../types";
+import { AdminPageLayout, EntityAvatar, FilterBar, RecordCard, RecordList, SearchField } from "./admin/components";
 
 const PAGE_SIZE = 8;
 
@@ -57,7 +58,7 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl min-w-0 max-w-full p-4 lg:p-8">
+    <AdminPageLayout>
       <PageHeader
         eyebrow="平台管理"
         title="用户管理"
@@ -70,36 +71,34 @@ export default function UsersPage() {
           description="只在这里分配平台级角色。知识库负责人由创建知识库自动产生，知识库成员在具体知识库里授权。"
           actions={<Badge tone="slate">用户 {total}</Badge>}
         />
-        <div className="border-b border-slate-100 bg-slate-50/60 px-5 py-4">
+        <FilterBar>
           <div className="grid gap-3 lg:grid-cols-3">
             <RoleNote title="USER" description="基础角色，注册后默认拥有。" tone="slate" />
             <RoleNote title="KB_MANAGER" description="可以创建知识库，并维护自己负责的知识库。" tone="cyan" />
             <RoleNote title="ADMIN" description="拥有平台级管理权限，请谨慎授予。" tone="rose" />
           </div>
           {(total > 0 || keyword) ? (
-            <div className="relative mt-4 max-w-xl">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <Input
-                className="pl-9"
-                value={keyword}
-                onChange={(event) => setKeyword(event.target.value)}
-                placeholder="搜索用户名、邮箱或角色"
-              />
-            </div>
+            <SearchField className="mt-4 max-w-xl" value={keyword} onChange={setKeyword} placeholder="搜索用户名、邮箱或角色" />
           ) : null}
-        </div>
-        <div className="space-y-2 p-5">
+        </FilterBar>
+        <RecordList
+          loading={usersQuery.isLoading}
+          loadingText="正在加载用户..."
+          empty={
+            <>
+              {total === 0 && !keyword ? <EmptyState title="暂无用户" description="用户注册后会显示在这里。" /> : null}
+              {total === 0 && keyword ? <EmptyState title="没有匹配用户" description="可以更换搜索关键词，或清空搜索条件。" /> : null}
+            </>
+          }
+        >
           <ErrorMessage error={usersQuery.error || roleMutation.error} />
-          {usersQuery.isLoading ? <p className="text-sm text-slate-500">正在加载用户...</p> : null}
-          {total === 0 && !keyword ? <EmptyState title="暂无用户" description="用户注册后会显示在这里。" /> : null}
-          {total === 0 && keyword ? <EmptyState title="没有匹配用户" description="可以更换搜索关键词，或清空搜索条件。" /> : null}
           {users.map((user) => (
-            <article key={user.id} className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+            <RecordCard key={user.id} className="px-4 py-3">
               <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-center">
                 <div className="flex min-w-0 items-start gap-3">
-                  <div className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-slate-100 text-sm font-semibold text-slate-600">
+                  <EntityAvatar>
                     {(user.displayName || user.email || "U").slice(0, 1).toUpperCase()}
-                  </div>
+                  </EntityAvatar>
                   <div className="min-w-0">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <h2 className="truncate text-base font-semibold text-slate-950">{user.displayName}</h2>
@@ -137,12 +136,12 @@ export default function UsersPage() {
                   })}
                 </div>
               </div>
-            </article>
+            </RecordCard>
           ))}
-        </div>
+        </RecordList>
         <Pagination page={safePage} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
       </Panel>
-    </div>
+    </AdminPageLayout>
   );
 }
 
