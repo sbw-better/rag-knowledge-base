@@ -35,4 +35,50 @@
             created_at DESC
         LIMIT #{limit} OFFSET #{offset}
     </select>
+
+    <select id="selectByBusiness" resultType="com.example.rag.domain.KnowledgeIssue">
+        SELECT *
+        FROM knowledge_issues
+        WHERE tenant_id = #{tenantId}
+          AND knowledge_base_id = #{knowledgeBaseId}
+          AND business_module = #{businessModule}
+          AND business_entity_id = #{businessEntityId}
+        ORDER BY
+            CASE WHEN status = 'OPEN' THEN 0 ELSE 1 END,
+            updated_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectSupportTicketIssueStats" resultType="com.example.rag.mapper.SupportTicketIssueStatsRow">
+        SELECT
+            COALESCE(SUM(CASE WHEN status = 'OPEN' THEN 1 ELSE 0 END), 0) AS open_knowledge_issues,
+            COALESCE(SUM(CASE WHEN source = 'NO_CONTEXT' THEN 1 ELSE 0 END), 0) AS no_context_issues
+        FROM knowledge_issues
+        WHERE tenant_id = #{tenantId}
+          AND business_module = 'SUPPORT_TICKET'
+          <include refid="com.example.rag.mapper.SupportTicketMapper.KnowledgeBaseScope">
+              <property name="kbColumn" value="knowledge_base_id"/>
+          </include>
+          AND created_at &gt;= #{startAt}
+          AND created_at &lt; #{endAt}
+    </select>
+
+    <select id="selectSupportTicketNoAnswerRank" resultType="com.example.rag.mapper.SupportTicketIssueRankRow">
+        SELECT
+            question,
+            COUNT(*) AS total,
+            MAX(created_at) AS latest_at
+        FROM knowledge_issues
+        WHERE tenant_id = #{tenantId}
+          AND business_module = 'SUPPORT_TICKET'
+          <include refid="com.example.rag.mapper.SupportTicketMapper.KnowledgeBaseScope">
+              <property name="kbColumn" value="knowledge_base_id"/>
+          </include>
+          AND source = 'NO_CONTEXT'
+          AND created_at &gt;= #{startAt}
+          AND created_at &lt; #{endAt}
+        GROUP BY question
+        ORDER BY total DESC, latest_at DESC
+        LIMIT #{limit}
+    </select>
 </mapper>

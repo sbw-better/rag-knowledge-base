@@ -5,6 +5,7 @@ import com.example.rag.common.PageRequestParams;
 import com.example.rag.common.PageResponse;
 import com.example.rag.feedback.dto.AnswerFeedbackRequest;
 import com.example.rag.feedback.dto.AnswerFeedbackResponse;
+import com.example.rag.feedback.dto.BusinessFeedbackLinksResponse;
 import com.example.rag.feedback.dto.KnowledgeIssueResponse;
 import com.example.rag.feedback.dto.ResolveKnowledgeIssueRequest;
 import jakarta.validation.Valid;
@@ -43,10 +44,28 @@ public class KnowledgeFeedbackController {
                 PageRequestParams.of(page, pageSize, keyword)));
     }
 
+    @GetMapping("/business-links")
+    ApiResponse<BusinessFeedbackLinksResponse> listBusinessLinks(
+            @RequestParam Long knowledgeBaseId,
+            @RequestParam String businessModule,
+            @RequestParam String businessEntityId,
+            @RequestParam(required = false, defaultValue = "10") Integer limit) {
+        return ApiResponse.ok(knowledgeFeedbackService.listBusinessLinks(
+                knowledgeBaseId,
+                businessModule,
+                businessEntityId,
+                limit == null ? 10 : limit));
+    }
+
     @PostMapping("/issues/{id}/resolve")
     ApiResponse<KnowledgeIssueResponse> resolveIssue(
             @PathVariable Long id,
             @RequestBody(required = false) ResolveKnowledgeIssueRequest request) {
         return ApiResponse.ok(knowledgeFeedbackService.resolveIssue(id, request));
+    }
+
+    @PostMapping("/issues/{id}/recheck")
+    ApiResponse<KnowledgeIssueResponse> recheckIssue(@PathVariable Long id) {
+        return ApiResponse.ok(knowledgeFeedbackService.recheckIssue(id));
     }
 }

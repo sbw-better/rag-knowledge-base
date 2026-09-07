@@ -22,8 +22,11 @@ export const eventLabels: Record<SupportTicketEventResponse["eventType"], string
   ASSIGNED: "负责人变更",
   STATUS_CHANGED: "状态流转",
   INTERNAL_NOTE: "内部备注",
+  CUSTOMER_MESSAGE: "客户补充",
+  AGENT_REPLY_SENT: "客服外发",
   AI_REPLY_GENERATED: "AI 生成回复",
-  REPLY_SAVED: "保存回复"
+  REPLY_SAVED: "保存回复",
+  KNOWLEDGE_RECHECK: "知识缺口复检"
 };
 
 export const statusOptions: Array<SupportTicketStatus | ""> = ["", "OPEN", "IN_PROGRESS", "WAITING_CUSTOMER", "RESOLVED", "CLOSED"];

@@ -18,18 +18,34 @@ import com.example.rag.domain.SupportTicketPriority;
 import com.example.rag.domain.SupportTicketStatus;
 import com.example.rag.domain.UserAccount;
 import com.example.rag.knowledge.KnowledgeBaseService;
+import com.example.rag.knowledge.dto.KnowledgeBaseResponse;
 import com.example.rag.mapper.KnowledgeBaseMapper;
+import com.example.rag.mapper.KnowledgeIssueMapper;
+import com.example.rag.mapper.SupportTicketAgentStatsRow;
+import com.example.rag.mapper.SupportTicketEventStatsRow;
 import com.example.rag.mapper.SupportTicketEventMapper;
+import com.example.rag.mapper.SupportTicketIssueRankRow;
+import com.example.rag.mapper.SupportTicketIssueStatsRow;
 import com.example.rag.mapper.SupportTicketMapper;
+import com.example.rag.mapper.SupportTicketStatsBucketRow;
+import com.example.rag.mapper.SupportTicketStatsRow;
+import com.example.rag.mapper.SupportTicketTrendRow;
 import com.example.rag.mapper.UserMapper;
+import com.example.rag.support.dto.AddTicketMessageRequest;
 import com.example.rag.support.dto.AddTicketNoteRequest;
 import com.example.rag.support.dto.AssignTicketRequest;
 import com.example.rag.support.dto.ChangeTicketStatusRequest;
 import com.example.rag.support.dto.CreateDemoTicketsRequest;
 import com.example.rag.support.dto.GenerateTicketReplyRequest;
+import com.example.rag.support.dto.SupportTicketAgentStatsResponse;
+import com.example.rag.support.dto.SupportTicketIssueRankResponse;
 import com.example.rag.support.dto.SupportTicketEventResponse;
+import com.example.rag.support.dto.SupportTicketActionRequest;
 import com.example.rag.support.dto.SupportTicketRequest;
 import com.example.rag.support.dto.SupportTicketResponse;
+import com.example.rag.support.dto.SupportTicketStatsBucketResponse;
+import com.example.rag.support.dto.SupportTicketStatsResponse;
+import com.example.rag.support.dto.SupportTicketTrendResponse;
 import com.example.rag.support.dto.TicketAssistantReplyResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,6 +54,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Objects;
 
@@ -52,6 +69,7 @@ public class SupportTicketService {
     private final SupportTicketMapper ticketMapper;
     private final SupportTicketEventMapper eventMapper;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
+    private final KnowledgeIssueMapper knowledgeIssueMapper;
     private final UserMapper userMapper;
     private final KnowledgeBaseService knowledgeBaseService;
     private final ChatService chatService;
@@ -60,6 +78,7 @@ public class SupportTicketService {
     public SupportTicketService(SupportTicketMapper ticketMapper,
                                 SupportTicketEventMapper eventMapper,
                                 KnowledgeBaseMapper knowledgeBaseMapper,
+                                KnowledgeIssueMapper knowledgeIssueMapper,
                                 UserMapper userMapper,
                                 KnowledgeBaseService knowledgeBaseService,
                                 ChatService chatService,
@@ -67,6 +86,7 @@ public class SupportTicketService {
         this.ticketMapper = ticketMapper;
         this.eventMapper = eventMapper;
         this.knowledgeBaseMapper = knowledgeBaseMapper;
+        this.knowledgeIssueMapper = knowledgeIssueMapper;
         this.userMapper = userMapper;
         this.knowledgeBaseService = knowledgeBaseService;
         this.chatService = chatService;
@@ -82,15 +102,16 @@ public class SupportTicketService {
                                                     PageRequestParams params) {
         UserAccount user = CurrentUser.required();
         if (knowledgeBaseId != null) {
-            knowledgeBaseService.requireAccess(knowledgeBaseId);
+            knowledgeBaseService.requireContentManageAccess(knowledgeBaseId);
         }
+        List<Long> knowledgeBaseIds = supportKnowledgeBaseIds();
         String safeStatus = normalizeStatus(status);
         String safePriority = normalizePriority(priority);
         Long assigneeId = Boolean.TRUE.equals(mine) ? user.getId() : null;
         boolean overdueOnly = Boolean.TRUE.equals(overdue);
-        long total = ticketMapper.countByTenantId(user.getTenantId(), knowledgeBaseId, safeStatus, safePriority, assigneeId, overdueOnly, params.keyword());
+        long total = ticketMapper.countByTenantId(user.getTenantId(), knowledgeBaseIds, knowledgeBaseId, safeStatus, safePriority, assigneeId, overdueOnly, params.keyword());
         List<SupportTicketResponse> items = ticketMapper.selectPageByTenantId(
-                        user.getTenantId(), knowledgeBaseId, safeStatus, safePriority, assigneeId, overdueOnly, params.keyword(), params.pageSize(), params.offset())
+                        user.getTenantId(), knowledgeBaseIds, knowledgeBaseId, safeStatus, safePriority, assigneeId, overdueOnly, params.keyword(), params.pageSize(), params.offset())
                 .stream()
                 .map(this::toResponse)
                 .toList();
@@ -98,16 +119,86 @@ public class SupportTicketService {
     }
 
     @Transactional(readOnly = true)
+    public SupportTicketStatsResponse getStats(Integer days) {
+        UserAccount user = CurrentUser.required();
+        List<Long> knowledgeBaseIds = supportKnowledgeBaseIds();
+        int windowDays = clampStatsWindowDays(days);
+        Instant endAt = Instant.now();
+        Instant startAt = endAt.minus(windowDays, ChronoUnit.DAYS);
+        Instant previousStartAt = startAt.minus(windowDays, ChronoUnit.DAYS);
+        SupportTicketStatsRow ticketStats = ticketMapper.selectStatsByTenantId(user.getTenantId(), knowledgeBaseIds, startAt, endAt);
+        if (ticketStats == null) {
+            ticketStats = new SupportTicketStatsRow();
+        }
+        SupportTicketStatsRow previousTicketStats = ticketMapper.selectStatsByTenantId(user.getTenantId(), knowledgeBaseIds, previousStartAt, startAt);
+        if (previousTicketStats == null) {
+            previousTicketStats = new SupportTicketStatsRow();
+        }
+        SupportTicketEventStatsRow eventStats = ticketMapper.selectEventStatsByTenantId(user.getTenantId(), knowledgeBaseIds, startAt, endAt);
+        if (eventStats == null) {
+            eventStats = new SupportTicketEventStatsRow();
+        }
+        SupportTicketEventStatsRow previousEventStats = ticketMapper.selectEventStatsByTenantId(user.getTenantId(), knowledgeBaseIds, previousStartAt, startAt);
+        if (previousEventStats == null) {
+            previousEventStats = new SupportTicketEventStatsRow();
+        }
+        SupportTicketIssueStatsRow issueStats = knowledgeIssueMapper.selectSupportTicketIssueStats(user.getTenantId(), knowledgeBaseIds, startAt, endAt);
+        if (issueStats == null) {
+            issueStats = new SupportTicketIssueStatsRow();
+        }
+        Integer knowledgeHitRate = calculateKnowledgeHitRate(eventStats.getAiReplyGenerated(), issueStats.getNoContextIssues());
+        List<SupportTicketAgentStatsResponse> agentStats = ticketMapper.selectAgentStatsByTenantId(user.getTenantId(), knowledgeBaseIds, startAt, endAt, 5)
+                .stream()
+                .map(this::toAgentStatsResponse)
+                .toList();
+        return new SupportTicketStatsResponse(
+                ticketStats.getTotal(),
+                ticketStats.getOpen(),
+                ticketStats.getInProgress(),
+                ticketStats.getWaitingCustomer(),
+                ticketStats.getResolved(),
+                ticketStats.getClosed(),
+                ticketStats.getOverdue(),
+                eventStats.getAiReplyGenerated(),
+                eventStats.getOutgoingReplies(),
+                eventStats.getCustomerMessages(),
+                issueStats.getOpenKnowledgeIssues(),
+                issueStats.getNoContextIssues(),
+                knowledgeHitRate,
+                toBucketResponses(ticketMapper.selectCategoryBucketsByTenantId(user.getTenantId(), knowledgeBaseIds, startAt, endAt, 5)),
+                toBucketResponses(ticketMapper.selectChannelBucketsByTenantId(user.getTenantId(), knowledgeBaseIds, startAt, endAt, 5)),
+                toBucketResponses(ticketMapper.selectPriorityBucketsByTenantId(user.getTenantId(), knowledgeBaseIds, startAt, endAt)),
+                knowledgeIssueMapper.selectSupportTicketNoAnswerRank(user.getTenantId(), knowledgeBaseIds, startAt, endAt, 5)
+                        .stream()
+                        .map(this::toIssueRankResponse)
+                        .toList(),
+                windowDays,
+                previousTicketStats.getTotal(),
+                ticketStats.getTotal() - previousTicketStats.getTotal(),
+                previousTicketStats.getResolved() + previousTicketStats.getClosed(),
+                ticketStats.getResolved() + ticketStats.getClosed() - previousTicketStats.getResolved() - previousTicketStats.getClosed(),
+                previousEventStats.getOutgoingReplies(),
+                eventStats.getOutgoingReplies() - previousEventStats.getOutgoingReplies(),
+                ticketStats.getAvgFirstResponseMinutes(),
+                ticketStats.getSlaAttainmentRate(),
+                ticketMapper.selectTrendByTenantId(user.getTenantId(), knowledgeBaseIds, startAt, endAt)
+                        .stream()
+                        .map(this::toTrendResponse)
+                        .toList(),
+                agentStats);
+    }
+
+    @Transactional(readOnly = true)
     public SupportTicketResponse get(Long id) {
         SupportTicket ticket = loadTicket(id);
-        knowledgeBaseService.requireAccess(ticket.getKnowledgeBaseId());
+        knowledgeBaseService.requireContentManageAccess(ticket.getKnowledgeBaseId());
         return toResponse(ticket);
     }
 
     @Transactional(readOnly = true)
     public List<SupportTicketEventResponse> listEvents(Long id) {
         SupportTicket ticket = loadTicket(id);
-        knowledgeBaseService.requireAccess(ticket.getKnowledgeBaseId());
+        knowledgeBaseService.requireContentManageAccess(ticket.getKnowledgeBaseId());
         return eventMapper.selectByTicketId(ticket.getTenantId(), ticket.getId())
                 .stream()
                 .map(this::toEventResponse)
@@ -117,7 +208,7 @@ public class SupportTicketService {
     @Transactional
     public SupportTicketResponse create(SupportTicketRequest request) {
         UserAccount user = CurrentUser.required();
-        KnowledgeBase kb = knowledgeBaseService.requireAccess(Ids.parse(request.knowledgeBaseId(), "knowledgeBaseId"));
+        KnowledgeBase kb = knowledgeBaseService.requireContentManageAccess(Ids.parse(request.knowledgeBaseId(), "knowledgeBaseId"));
         SupportTicket ticket = new SupportTicket();
         ticket.setTenantId(user.getTenantId());
         ticket.setKnowledgeBaseId(kb.getId());
@@ -140,7 +231,9 @@ public class SupportTicketService {
     public SupportTicketResponse update(Long id, SupportTicketRequest request) {
         SupportTicket ticket = loadTicket(id);
         UserAccount user = CurrentUser.required();
-        knowledgeBaseService.requireAccess(Ids.parse(request.knowledgeBaseId(), "knowledgeBaseId"));
+        requireWorkAccess(ticket);
+        ensureNotClosed(ticket);
+        knowledgeBaseService.requireContentManageAccess(Ids.parse(request.knowledgeBaseId(), "knowledgeBaseId"));
         if (!user.getTenantId().equals(ticket.getTenantId())) {
             throw new NotFoundException("工单不存在");
         }
@@ -149,6 +242,7 @@ public class SupportTicketService {
         String fromReply = ticket.getLatestAiReply();
         ticket.setKnowledgeBaseId(Ids.parse(request.knowledgeBaseId(), "knowledgeBaseId"));
         apply(ticket, request, false);
+        enforceStatusTransitionAccess(ticket, user, fromStatus, ticket.getStatus());
         ticketMapper.updateById(ticket);
         recordWorkflowEvents(ticket, user, fromStatus, fromAssigneeId, fromReply, "更新工单信息");
         auditLogService.record(user, "SUPPORT_TICKET_UPDATE", "SUPPORT_TICKET", ticket.getId(),
@@ -160,7 +254,8 @@ public class SupportTicketService {
     public SupportTicketResponse assign(Long id, AssignTicketRequest request) {
         SupportTicket ticket = loadTicket(id);
         UserAccount user = CurrentUser.required();
-        knowledgeBaseService.requireAccess(ticket.getKnowledgeBaseId());
+        requireWorkAccess(ticket);
+        ensureNotClosed(ticket);
         Long fromAssigneeId = ticket.getAssigneeId();
         Long toAssigneeId = parseOptionalAssigneeId(request == null ? null : request.assigneeId(), user.getTenantId());
         if (Objects.equals(fromAssigneeId, toAssigneeId)) {
@@ -180,7 +275,7 @@ public class SupportTicketService {
     public SupportTicketResponse changeStatus(Long id, ChangeTicketStatusRequest request) {
         SupportTicket ticket = loadTicket(id);
         UserAccount user = CurrentUser.required();
-        knowledgeBaseService.requireAccess(ticket.getKnowledgeBaseId());
+        requireWorkAccess(ticket);
         SupportTicketStatus targetStatus = request.status();
         if (targetStatus == null) {
             throw new BadRequestException("status 不能为空");
@@ -189,6 +284,7 @@ public class SupportTicketService {
         if (fromStatus == targetStatus) {
             return toResponse(ticket);
         }
+        enforceStatusTransitionAccess(ticket, user, fromStatus, targetStatus);
         Instant now = Instant.now();
         ticket.setStatus(targetStatus);
         ticket.setResolvedAt(targetStatus == SupportTicketStatus.RESOLVED || targetStatus == SupportTicketStatus.CLOSED ? now : null);
@@ -202,10 +298,53 @@ public class SupportTicketService {
     }
 
     @Transactional
+    public SupportTicketResponse close(Long id, SupportTicketActionRequest request) {
+        SupportTicket ticket = loadTicket(id);
+        UserAccount user = CurrentUser.required();
+        requireManageAccess(ticket);
+        SupportTicketStatus fromStatus = ticket.getStatus();
+        if (fromStatus == SupportTicketStatus.CLOSED) {
+            return toResponse(ticket);
+        }
+        Instant now = Instant.now();
+        ticket.setStatus(SupportTicketStatus.CLOSED);
+        ticket.setResolvedAt(now);
+        ticket.setUpdatedAt(now);
+        ticketMapper.updateById(ticket);
+        recordEvent(ticket, user, SupportTicketEventType.STATUS_CHANGED, fromStatus, SupportTicketStatus.CLOSED,
+                ticket.getAssigneeId(), ticket.getAssigneeId(), trimToNull(request == null ? null : request.note(), 1000));
+        auditLogService.record(user, "SUPPORT_TICKET_CLOSE", "SUPPORT_TICKET", ticket.getId(),
+                "关闭售后工单：" + ticket.getTicketNo());
+        return toResponse(ticket);
+    }
+
+    @Transactional
+    public SupportTicketResponse reopen(Long id, SupportTicketActionRequest request) {
+        SupportTicket ticket = loadTicket(id);
+        UserAccount user = CurrentUser.required();
+        requireManageAccess(ticket);
+        SupportTicketStatus fromStatus = ticket.getStatus();
+        if (fromStatus != SupportTicketStatus.CLOSED && fromStatus != SupportTicketStatus.RESOLVED) {
+            return toResponse(ticket);
+        }
+        Instant now = Instant.now();
+        ticket.setStatus(SupportTicketStatus.OPEN);
+        ticket.setResolvedAt(null);
+        ticket.setUpdatedAt(now);
+        ticketMapper.updateById(ticket);
+        recordEvent(ticket, user, SupportTicketEventType.STATUS_CHANGED, fromStatus, SupportTicketStatus.OPEN,
+                ticket.getAssigneeId(), ticket.getAssigneeId(), trimToNull(request == null ? null : request.note(), 1000));
+        auditLogService.record(user, "SUPPORT_TICKET_REOPEN", "SUPPORT_TICKET", ticket.getId(),
+                "重开售后工单：" + ticket.getTicketNo());
+        return toResponse(ticket);
+    }
+
+    @Transactional
     public SupportTicketEventResponse addInternalNote(Long id, AddTicketNoteRequest request) {
         SupportTicket ticket = loadTicket(id);
         UserAccount user = CurrentUser.required();
-        knowledgeBaseService.requireAccess(ticket.getKnowledgeBaseId());
+        requireWorkAccess(ticket);
+        ensureNotClosed(ticket);
         SupportTicketEvent event = recordEvent(ticket, user, SupportTicketEventType.INTERNAL_NOTE, ticket.getStatus(), ticket.getStatus(),
                 ticket.getAssigneeId(), ticket.getAssigneeId(), requiredTrim(request.content(), "content", 2000));
         ticket.setUpdatedAt(Instant.now());
@@ -216,9 +355,57 @@ public class SupportTicketService {
     }
 
     @Transactional
+    public SupportTicketEventResponse addCustomerMessage(Long id, AddTicketMessageRequest request) {
+        SupportTicket ticket = loadTicket(id);
+        UserAccount user = CurrentUser.required();
+        requireWorkAccess(ticket);
+        ensureNotClosed(ticket);
+        SupportTicketStatus fromStatus = ticket.getStatus();
+        if (fromStatus == SupportTicketStatus.WAITING_CUSTOMER) {
+            ticket.setStatus(SupportTicketStatus.IN_PROGRESS);
+        }
+        ticket.setUpdatedAt(Instant.now());
+        ticketMapper.updateById(ticket);
+        if (fromStatus != ticket.getStatus()) {
+            recordEvent(ticket, user, SupportTicketEventType.STATUS_CHANGED, fromStatus, ticket.getStatus(),
+                    ticket.getAssigneeId(), ticket.getAssigneeId(), "客户补充信息后回到处理中");
+        }
+        SupportTicketEvent event = recordEvent(ticket, user, SupportTicketEventType.CUSTOMER_MESSAGE, ticket.getStatus(), ticket.getStatus(),
+                ticket.getAssigneeId(), ticket.getAssigneeId(), requiredTrim(request.content(), "content", 4000));
+        auditLogService.record(user, "SUPPORT_TICKET_CUSTOMER_MESSAGE", "SUPPORT_TICKET", ticket.getId(),
+                "记录客户补充消息：" + ticket.getTicketNo());
+        return toEventResponse(event);
+    }
+
+    @Transactional
+    public SupportTicketResponse sendOutgoingReply(Long id, AddTicketMessageRequest request) {
+        SupportTicket ticket = loadTicket(id);
+        UserAccount user = CurrentUser.required();
+        requireWorkAccess(ticket);
+        ensureNotClosed(ticket);
+        String reply = requiredTrim(request.content(), "content", 4000);
+        SupportTicketStatus fromStatus = ticket.getStatus();
+        if (fromStatus != SupportTicketStatus.RESOLVED && fromStatus != SupportTicketStatus.CLOSED) {
+            ticket.setStatus(SupportTicketStatus.WAITING_CUSTOMER);
+        }
+        ticket.setLatestAiReply(reply);
+        ticket.setUpdatedAt(Instant.now());
+        ticketMapper.updateById(ticket);
+        if (fromStatus != ticket.getStatus()) {
+            recordEvent(ticket, user, SupportTicketEventType.STATUS_CHANGED, fromStatus, ticket.getStatus(),
+                    ticket.getAssigneeId(), ticket.getAssigneeId(), "客服外发回复后等待客户确认");
+        }
+        recordEvent(ticket, user, SupportTicketEventType.AGENT_REPLY_SENT, ticket.getStatus(), ticket.getStatus(),
+                ticket.getAssigneeId(), ticket.getAssigneeId(), reply);
+        auditLogService.record(user, "SUPPORT_TICKET_REPLY_SEND", "SUPPORT_TICKET", ticket.getId(),
+                "发送工单客服回复：" + ticket.getTicketNo());
+        return toResponse(ticket);
+    }
+
+    @Transactional
     public List<SupportTicketResponse> createDemoTickets(CreateDemoTicketsRequest request) {
         UserAccount user = CurrentUser.required();
-        KnowledgeBase kb = knowledgeBaseService.requireAccess(Ids.parse(request.knowledgeBaseId(), "knowledgeBaseId"));
+        KnowledgeBase kb = knowledgeBaseService.requireContentManageAccess(Ids.parse(request.knowledgeBaseId(), "knowledgeBaseId"));
         Instant now = Instant.now();
         List<SupportTicket> tickets = List.of(
                 demoTicket(user, kb, "退货退款", "官网在线客服", "林女士", "PLUS会员", "ORD-20260902-1001",
@@ -246,7 +433,8 @@ public class SupportTicketService {
     @Transactional
     public TicketAssistantReplyResponse generateAssistantReply(Long id, GenerateTicketReplyRequest request) {
         SupportTicket ticket = loadTicket(id);
-        KnowledgeBase kb = knowledgeBaseService.requireAccess(ticket.getKnowledgeBaseId());
+        KnowledgeBase kb = requireWorkAccess(ticket);
+        ensureNotClosed(ticket);
         SupportTicketStatus fromStatus = ticket.getStatus();
         String businessContext = buildBusinessContext(ticket);
         String question = buildReplyQuestion(ticket, request == null ? null : request.instruction());
@@ -404,6 +592,9 @@ public class SupportTicketService {
 
     private SupportTicketResponse toResponse(SupportTicket ticket) {
         KnowledgeBase kb = knowledgeBaseMapper.selectById(ticket.getKnowledgeBaseId());
+        KnowledgeBaseResponse kbResponse = kb == null ? null : knowledgeBaseService.toResponse(kb);
+        boolean canWork = kbResponse != null && kbResponse.canManageDocuments();
+        boolean canManage = kbResponse != null && kbResponse.canManageConfig();
         Instant now = Instant.now();
         boolean active = ticket.getStatus() != SupportTicketStatus.RESOLVED && ticket.getStatus() != SupportTicketStatus.CLOSED;
         boolean overdue = active && ticket.getDueAt() != null && ticket.getDueAt().isBefore(now);
@@ -436,7 +627,11 @@ public class SupportTicketService {
                 ticket.getAiConversationId() == null ? null : ticket.getAiConversationId().toString(),
                 ticket.getResolvedAt(),
                 ticket.getCreatedAt(),
-                ticket.getUpdatedAt());
+                ticket.getUpdatedAt(),
+                canWork,
+                canManage && ticket.getStatus() != SupportTicketStatus.CLOSED,
+                canManage && (ticket.getStatus() == SupportTicketStatus.CLOSED || ticket.getStatus() == SupportTicketStatus.RESOLVED),
+                allowedStatuses(ticket.getStatus(), canWork, canManage));
     }
 
     private SupportTicketEventResponse toEventResponse(SupportTicketEvent event) {
@@ -454,6 +649,84 @@ public class SupportTicketService {
                 userName(event.getToAssigneeId()),
                 event.getNote(),
                 event.getCreatedAt());
+    }
+
+    private List<SupportTicketStatsBucketResponse> toBucketResponses(List<SupportTicketStatsBucketRow> rows) {
+        return rows.stream()
+                .map(row -> new SupportTicketStatsBucketResponse(row.getName(), row.getTotal()))
+                .toList();
+    }
+
+    private SupportTicketIssueRankResponse toIssueRankResponse(SupportTicketIssueRankRow row) {
+        return new SupportTicketIssueRankResponse(row.getQuestion(), row.getTotal(), row.getLatestAt());
+    }
+
+    private SupportTicketTrendResponse toTrendResponse(SupportTicketTrendRow row) {
+        return new SupportTicketTrendResponse(row.getDateLabel(), row.getTotal(), row.getResolved(), row.getOverdue(), row.getOutgoingReplies());
+    }
+
+    private SupportTicketAgentStatsResponse toAgentStatsResponse(SupportTicketAgentStatsRow row) {
+        return new SupportTicketAgentStatsResponse(
+                row.getAssigneeId() == null ? null : row.getAssigneeId().toString(),
+                row.getAssigneeName() == null ? "未分配" : row.getAssigneeName(),
+                row.getAssignedTickets(),
+                row.getOpenTickets(),
+                row.getResolvedTickets(),
+                row.getOutgoingReplies(),
+                row.getAvgFirstResponseMinutes(),
+                row.getSlaAttainmentRate());
+    }
+
+    // Reuse knowledge-base permissions, including tenant isolation and the ADMIN override.
+    private List<Long> supportKnowledgeBaseIds() {
+        return knowledgeBaseService.list().stream()
+                .filter(KnowledgeBaseResponse::canManageDocuments)
+                .map(kb -> Long.valueOf(kb.id()))
+                .toList();
+    }
+
+    private KnowledgeBase requireWorkAccess(SupportTicket ticket) {
+        return knowledgeBaseService.requireContentManageAccess(ticket.getKnowledgeBaseId());
+    }
+
+    private KnowledgeBase requireManageAccess(SupportTicket ticket) {
+        return knowledgeBaseService.requireManageAccess(ticket.getKnowledgeBaseId());
+    }
+
+    private void ensureNotClosed(SupportTicket ticket) {
+        if (ticket.getStatus() == SupportTicketStatus.CLOSED) {
+            throw new BadRequestException("已关闭工单需要重开后才能继续处理");
+        }
+    }
+
+    private void enforceStatusTransitionAccess(SupportTicket ticket,
+                                               UserAccount user,
+                                               SupportTicketStatus fromStatus,
+                                               SupportTicketStatus targetStatus) {
+        if (fromStatus == targetStatus) {
+            return;
+        }
+        if (targetStatus == SupportTicketStatus.CLOSED
+                || fromStatus == SupportTicketStatus.CLOSED
+                || (fromStatus == SupportTicketStatus.RESOLVED && targetStatus != SupportTicketStatus.CLOSED)) {
+            requireManageAccess(ticket);
+        }
+    }
+
+    private List<SupportTicketStatus> allowedStatuses(SupportTicketStatus currentStatus, boolean canWork, boolean canManage) {
+        if (!canWork) {
+            return List.of();
+        }
+        if (currentStatus == SupportTicketStatus.CLOSED) {
+            return canManage ? List.of(SupportTicketStatus.OPEN) : List.of();
+        }
+        if (currentStatus == SupportTicketStatus.RESOLVED) {
+            return canManage ? List.of(SupportTicketStatus.OPEN, SupportTicketStatus.CLOSED) : List.of(SupportTicketStatus.RESOLVED);
+        }
+        if (canManage) {
+            return List.of(SupportTicketStatus.OPEN, SupportTicketStatus.IN_PROGRESS, SupportTicketStatus.WAITING_CUSTOMER, SupportTicketStatus.RESOLVED, SupportTicketStatus.CLOSED);
+        }
+        return List.of(SupportTicketStatus.OPEN, SupportTicketStatus.IN_PROGRESS, SupportTicketStatus.WAITING_CUSTOMER, SupportTicketStatus.RESOLVED);
     }
 
     private void recordWorkflowEvents(SupportTicket ticket,
@@ -557,6 +830,27 @@ public class SupportTicketService {
         } catch (IllegalArgumentException ex) {
             throw new BadRequestException("工单优先级不合法");
         }
+    }
+
+    private static Integer calculateKnowledgeHitRate(long aiReplyGenerated, long noContextIssues) {
+        if (aiReplyGenerated <= 0) {
+            return null;
+        }
+        long hitCount = Math.max(0, aiReplyGenerated - noContextIssues);
+        return (int) Math.round(hitCount * 100.0 / aiReplyGenerated);
+    }
+
+    private static int clampStatsWindowDays(Integer days) {
+        if (days == null) {
+            return 7;
+        }
+        if (days <= 1) {
+            return 1;
+        }
+        if (days >= 30) {
+            return 30;
+        }
+        return days;
     }
 
     private static String requiredTrim(String value, String fieldName, int maxLength) {

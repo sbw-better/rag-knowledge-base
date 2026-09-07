@@ -20,6 +20,7 @@ import com.example.rag.domain.MessageRole;
 import com.example.rag.domain.UserAccount;
 import com.example.rag.feedback.dto.AnswerFeedbackRequest;
 import com.example.rag.feedback.dto.AnswerFeedbackResponse;
+import com.example.rag.feedback.dto.BusinessFeedbackLinksResponse;
 import com.example.rag.feedback.dto.KnowledgeIssueResponse;
 import com.example.rag.feedback.dto.ResolveKnowledgeIssueRequest;
 import com.example.rag.knowledge.KnowledgeBaseService;
@@ -44,19 +45,25 @@ public class KnowledgeFeedbackService {
     private final MessageMapper messageMapper;
     private final ConversationMapper conversationMapper;
     private final AuditLogService auditLogService;
+    private final KnowledgeIssueRecheckService recheckService;
+    private final com.example.rag.mapper.KnowledgeIssueRecheckMapper recheckMapper;
 
     public KnowledgeFeedbackService(KnowledgeBaseService knowledgeBaseService,
                                     AnswerFeedbackMapper answerFeedbackMapper,
                                     KnowledgeIssueMapper knowledgeIssueMapper,
                                     MessageMapper messageMapper,
                                     ConversationMapper conversationMapper,
-                                    AuditLogService auditLogService) {
+                                    AuditLogService auditLogService,
+                                    KnowledgeIssueRecheckService recheckService,
+                                    com.example.rag.mapper.KnowledgeIssueRecheckMapper recheckMapper) {
         this.knowledgeBaseService = knowledgeBaseService;
         this.answerFeedbackMapper = answerFeedbackMapper;
         this.knowledgeIssueMapper = knowledgeIssueMapper;
         this.messageMapper = messageMapper;
         this.conversationMapper = conversationMapper;
         this.auditLogService = auditLogService;
+        this.recheckService = recheckService;
+        this.recheckMapper = recheckMapper;
     }
 
     @Transactional
@@ -142,6 +149,30 @@ public class KnowledgeFeedbackService {
         return PageResponse.of(items, params.page(), params.pageSize(), total);
     }
 
+    @Transactional(readOnly = true)
+    public BusinessFeedbackLinksResponse listBusinessLinks(Long knowledgeBaseId,
+                                                           String businessModule,
+                                                           String businessEntityId,
+                                                           int limit) {
+        UserAccount user = CurrentUser.required();
+        KnowledgeBase kb = knowledgeBaseService.requireAccess(knowledgeBaseId);
+        String safeModule = requiredTrim(businessModule, "businessModule", 80);
+        if ("SUPPORT_TICKET".equals(safeModule)) {
+            knowledgeBaseService.requireContentManageAccess(knowledgeBaseId);
+        }
+        String safeEntityId = requiredTrim(businessEntityId, "businessEntityId", 120);
+        int safeLimit = Math.min(Math.max(limit, 1), 50);
+        List<KnowledgeIssueResponse> issues = knowledgeIssueMapper.selectByBusiness(user.getTenantId(), kb.getId(), safeModule, safeEntityId, safeLimit)
+                .stream()
+                .map(this::toIssueResponse)
+                .toList();
+        List<AnswerFeedbackResponse> feedbacks = answerFeedbackMapper.selectByBusiness(user.getTenantId(), kb.getId(), safeModule, safeEntityId, safeLimit)
+                .stream()
+                .map(KnowledgeFeedbackService::toFeedbackResponse)
+                .toList();
+        return new BusinessFeedbackLinksResponse(issues, feedbacks);
+    }
+
     @Transactional
     public KnowledgeIssueResponse resolveIssue(Long issueId, ResolveKnowledgeIssueRequest request) {
         UserAccount user = CurrentUser.required();
@@ -150,6 +181,9 @@ public class KnowledgeFeedbackService {
             throw new NotFoundException("知识缺口不存在");
         }
         knowledgeBaseService.requireManageAccess(issue.getKnowledgeBaseId());
+        if (issue.getStatus() == KnowledgeIssueStatus.RESOLVED) {
+            return toIssueResponse(issue);
+        }
         issue.setStatus(KnowledgeIssueStatus.RESOLVED);
         issue.setResolutionNote(trimToNull(request == null ? null : request.resolutionNote(), 2000));
         issue.setResolvedBy(user.getId());
@@ -158,6 +192,19 @@ public class KnowledgeFeedbackService {
         knowledgeIssueMapper.updateById(issue);
         auditLogService.record(user, "KNOWLEDGE_ISSUE_RESOLVE", "KNOWLEDGE_ISSUE", issue.getId(),
                 "处理知识缺口：" + issue.getQuestion());
+        recheckService.run(issue, user);
+        return toIssueResponse(issue);
+    }
+
+    @Transactional
+    public KnowledgeIssueResponse recheckIssue(Long issueId) {
+        UserAccount user = CurrentUser.required();
+        KnowledgeIssue issue = knowledgeIssueMapper.selectById(issueId);
+        if (issue == null || !user.getTenantId().equals(issue.getTenantId())) {
+            throw new NotFoundException("知识缺口不存在");
+        }
+        knowledgeBaseService.requireManageAccess(issue.getKnowledgeBaseId());
+        recheckService.run(issue, user);
         return toIssueResponse(issue);
     }
 
@@ -227,6 +274,14 @@ public class KnowledgeFeedbackService {
         return trimmed.length() <= maxLength ? trimmed : trimmed.substring(0, maxLength);
     }
 
+    private static String requiredTrim(String value, String fieldName, int maxLength) {
+        String trimmed = trimToNull(value, maxLength);
+        if (trimmed == null) {
+            throw new BadRequestException(fieldName + " 不能为空");
+        }
+        return trimmed;
+    }
+
     private static AnswerFeedbackResponse toFeedbackResponse(AnswerFeedback feedback) {
         return new AnswerFeedbackResponse(
                 feedback.getId().toString(),
@@ -264,6 +319,7 @@ public class KnowledgeFeedbackService {
                 issue.getResolvedBy() == null ? null : issue.getResolvedBy().toString(),
                 issue.getResolvedAt(),
                 issue.getCreatedAt(),
-                issue.getUpdatedAt());
+                issue.getUpdatedAt(),
+                recheckMapper.selectRecent(issue.getTenantId(), issue.getId()));
     }
 }

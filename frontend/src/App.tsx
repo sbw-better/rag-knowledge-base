@@ -1,8 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Button, ErrorMessage } from "./components/ui";
 import { api } from "./lib/api";
 import { clearAuth, getToken } from "./lib/auth";
+import { getWorkspaceCapabilities } from "./lib/workspace-permissions";
 import AuthPage from "./pages/AuthPage";
 import AuditLogsPage from "./pages/AuditLogsPage";
 import KnowledgeBasePage from "./pages/KnowledgeBasePage";
@@ -68,6 +70,31 @@ function ProtectedRoute() {
   return <WorkspaceLayout user={meQuery.data ?? null} />;
 }
 
+function RequireAdmin({ children }: { children: ReactNode }) {
+  const meQuery = useQuery({
+    queryKey: ["me"],
+    queryFn: api.me
+  });
+  const capabilities = getWorkspaceCapabilities(meQuery.data);
+
+  if (meQuery.isLoading) {
+    return <div className="p-6 text-sm text-slate-500">正在校验访问权限...</div>;
+  }
+
+  if (!capabilities.canViewAdmin) {
+    return (
+      <div className="p-4 sm:p-6 lg:p-8">
+        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <h1 className="text-lg font-semibold text-slate-950">无权访问系统管理</h1>
+          <p className="mt-2 text-sm leading-6 text-slate-500">用户、租户和审计日志仅管理员可见。</p>
+        </section>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <Routes>
@@ -80,9 +107,9 @@ export default function App() {
         <Route path="knowledge-bases/:id" element={<KnowledgeBasePage />} />
         <Route path="support-tickets" element={<SupportTicketsPage />} />
         <Route path="support-tickets/:id" element={<SupportTicketsPage />} />
-        <Route path="users" element={<UsersPage />} />
-        <Route path="tenants" element={<TenantsPage />} />
-        <Route path="audit-logs" element={<AuditLogsPage />} />
+        <Route path="users" element={<RequireAdmin><UsersPage /></RequireAdmin>} />
+        <Route path="tenants" element={<RequireAdmin><TenantsPage /></RequireAdmin>} />
+        <Route path="audit-logs" element={<RequireAdmin><AuditLogsPage /></RequireAdmin>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -2,7 +2,7 @@ import { Building2, ClipboardList, Database, Headphones, Home, Users } from "luc
 import { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { cn } from "../lib/utils";
-import type { KnowledgeBaseResponse } from "../types";
+import type { WorkspaceCapabilities } from "../lib/workspace-permissions";
 
 type ServiceNavItem = {
   to: string;
@@ -10,6 +10,7 @@ type ServiceNavItem = {
   title: string;
   icon: ReactNode;
   end?: boolean;
+  visible: (capabilities: WorkspaceCapabilities) => boolean;
 };
 
 type ServiceNavGroup = {
@@ -22,35 +23,49 @@ const serviceNavGroups: ServiceNavGroup[] = [
   {
     title: "业务处理",
     items: [
-      { to: "/app", label: "工作台首页", title: "工作台首页", icon: <Home className="h-4 w-4 shrink-0" />, end: true },
-      { to: "/app/support-tickets", label: "工单处理", title: "工单处理", icon: <Headphones className="h-4 w-4 shrink-0" /> }
+      { to: "/app", label: "工作台首页", title: "工作台首页", icon: <Home className="h-4 w-4 shrink-0" />, end: true, visible: () => true },
+      {
+        to: "/app/support-tickets",
+        label: "工单处理",
+        title: "工单处理",
+        icon: <Headphones className="h-4 w-4 shrink-0" />,
+        visible: (capabilities) => capabilities.canViewSupport
+      }
     ]
   },
   {
     title: "知识运营",
-    items: [{ to: "/app/knowledge-bases", label: "知识库运营", title: "知识库运营", icon: <Database className="h-4 w-4 shrink-0" />, end: true }]
+    items: [
+      {
+        to: "/app/knowledge-bases",
+        label: "知识库运营",
+        title: "知识库运营",
+        icon: <Database className="h-4 w-4 shrink-0" />,
+        end: true,
+        visible: (capabilities) => capabilities.canViewKnowledge
+      }
+    ]
   },
   {
     title: "系统管理",
-    adminOnly: true,
     items: [
-      { to: "/app/users", label: "用户管理", title: "用户管理", icon: <Users className="h-4 w-4 shrink-0" /> },
-      { to: "/app/tenants", label: "租户管理", title: "租户管理", icon: <Building2 className="h-4 w-4 shrink-0" /> },
-      { to: "/app/audit-logs", label: "审计日志", title: "审计日志", icon: <ClipboardList className="h-4 w-4 shrink-0" /> }
+      { to: "/app/users", label: "用户管理", title: "用户管理", icon: <Users className="h-4 w-4 shrink-0" />, visible: (capabilities) => capabilities.canViewAdmin },
+      { to: "/app/tenants", label: "租户管理", title: "租户管理", icon: <Building2 className="h-4 w-4 shrink-0" />, visible: (capabilities) => capabilities.canViewAdmin },
+      { to: "/app/audit-logs", label: "审计日志", title: "审计日志", icon: <ClipboardList className="h-4 w-4 shrink-0" />, visible: (capabilities) => capabilities.canViewAdmin }
     ]
   }
 ];
 
 export function SidebarNavigation({
   collapsed,
-  isAdmin,
-  knowledgeBases
+  capabilities
 }: {
   collapsed: boolean;
-  isAdmin: boolean;
-  knowledgeBases: KnowledgeBaseResponse[];
+  capabilities: WorkspaceCapabilities;
 }) {
-  const groups = serviceNavGroups.filter((group) => !group.adminOnly || isAdmin);
+  const groups = serviceNavGroups
+    .map((group) => ({ ...group, items: group.items.filter((item) => item.visible(capabilities)) }))
+    .filter((group) => group.items.length > 0);
 
   return (
     <nav className={cn("flex-1 overflow-y-auto", collapsed ? "p-2" : "p-3")}>
@@ -64,43 +79,23 @@ export function SidebarNavigation({
           ))}
         </SidebarSection>
       ))}
-
-      {!collapsed && knowledgeBases.length > 0 ? (
-        <div className="mt-2 space-y-1 pl-2">
-          {knowledgeBases.slice(0, 5).map((kb) => (
-            <NavLink
-              key={kb.id}
-              to={`/app/knowledge-bases/${kb.id}`}
-              title={kb.name}
-              className={({ isActive }) =>
-                cn(
-                  "flex h-8 min-w-0 items-center rounded-lg px-3 text-sm transition",
-                  isActive ? "bg-emerald-50 text-emerald-800" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-                )
-              }
-            >
-              <span className="truncate">{kb.name}</span>
-            </NavLink>
-          ))}
-        </div>
-      ) : null}
     </nav>
   );
 }
 
-export function MobileServiceNav({ isAdmin }: { isAdmin: boolean }) {
+export function MobileServiceNav({ capabilities }: { capabilities: WorkspaceCapabilities }) {
   const items = [
     { to: "/app", label: "首页", icon: <Home className="h-4 w-4" />, end: true },
-    { to: "/app/support-tickets", label: "工单", icon: <Headphones className="h-4 w-4" /> },
-    { to: "/app/knowledge-bases", label: "知识", icon: <Database className="h-4 w-4" /> },
-    ...(isAdmin ? [{ to: "/app/users", label: "管理", icon: <Users className="h-4 w-4" /> }] : [])
+    ...(capabilities.canViewSupport ? [{ to: "/app/support-tickets", label: "工单", icon: <Headphones className="h-4 w-4" /> }] : []),
+    ...(capabilities.canViewKnowledge ? [{ to: "/app/knowledge-bases", label: "知识", icon: <Database className="h-4 w-4" /> }] : []),
+    ...(capabilities.canViewAdmin ? [{ to: "/app/users", label: "管理", icon: <Users className="h-4 w-4" /> }] : [])
   ];
 
   return (
     <nav
       className={cn(
         "fixed inset-x-0 bottom-0 z-30 grid h-16 border-t border-slate-200 bg-white/95 px-2 pb-[env(safe-area-inset-bottom)] shadow-lg shadow-slate-900/10 backdrop-blur lg:hidden",
-        isAdmin ? "grid-cols-4" : "grid-cols-3"
+        items.length >= 4 ? "grid-cols-4" : items.length === 3 ? "grid-cols-3" : "grid-cols-2"
       )}
     >
       {items.map((item) => (

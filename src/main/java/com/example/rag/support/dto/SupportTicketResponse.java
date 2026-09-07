@@ -4,6 +4,7 @@ import com.example.rag.domain.SupportTicketPriority;
 import com.example.rag.domain.SupportTicketStatus;
 
 import java.time.Instant;
+import java.util.List;
 
 /**
  * 售后工单详情响应。
@@ -36,6 +37,10 @@ public record SupportTicketResponse(
         String aiConversationId,
         Instant resolvedAt,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+        boolean canWork,
+        boolean canClose,
+        boolean canReopen,
+        List<SupportTicketStatus> allowedStatuses
 ) {
 }

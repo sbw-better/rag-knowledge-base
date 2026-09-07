@@ -256,9 +256,22 @@ export type SupportTicketResponse = {
   resolvedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  canWork: boolean;
+  canClose: boolean;
+  canReopen: boolean;
+  allowedStatuses: SupportTicketStatus[];
 };
 
-export type SupportTicketEventType = "CREATED" | "ASSIGNED" | "STATUS_CHANGED" | "INTERNAL_NOTE" | "AI_REPLY_GENERATED" | "REPLY_SAVED";
+export type SupportTicketEventType =
+  | "CREATED"
+  | "ASSIGNED"
+  | "STATUS_CHANGED"
+  | "INTERNAL_NOTE"
+  | "CUSTOMER_MESSAGE"
+  | "AGENT_REPLY_SENT"
+  | "AI_REPLY_GENERATED"
+  | "REPLY_SAVED"
+  | "KNOWLEDGE_RECHECK";
 
 export type SupportTicketEventResponse = {
   id: string;
@@ -281,6 +294,67 @@ export type TicketAssistantReplyResponse = {
   chat: ChatResponse;
 };
 
+export type SupportTicketStatsBucketResponse = {
+  name: string;
+  total: number;
+};
+
+export type SupportTicketIssueRankResponse = {
+  question: string;
+  total: number;
+  latestAt: string;
+};
+
+export type SupportTicketTrendResponse = {
+  dateLabel: string;
+  total: number;
+  resolved: number;
+  overdue: number;
+  outgoingReplies: number;
+};
+
+export type SupportTicketAgentStatsResponse = {
+  assigneeId: string | null;
+  assigneeName: string;
+  assignedTickets: number;
+  openTickets: number;
+  resolvedTickets: number;
+  outgoingReplies: number;
+  avgFirstResponseMinutes: number | null;
+  slaAttainmentRate: number | null;
+};
+
+export type SupportTicketStatsResponse = {
+  total: number;
+  open: number;
+  inProgress: number;
+  waitingCustomer: number;
+  resolved: number;
+  closed: number;
+  overdue: number;
+  aiReplyGenerated: number;
+  outgoingReplies: number;
+  customerMessages: number;
+  openKnowledgeIssues: number;
+  noContextIssues: number;
+  knowledgeHitRate: number | null;
+  categoryDistribution: SupportTicketStatsBucketResponse[];
+  channelDistribution: SupportTicketStatsBucketResponse[];
+  priorityDistribution: SupportTicketStatsBucketResponse[];
+  noAnswerQuestions: SupportTicketIssueRankResponse[];
+  windowDays: number;
+  previousTotal: number;
+  totalChange: number;
+  previousResolved: number;
+  resolvedChange: number;
+  previousOutgoingReplies: number;
+  outgoingRepliesChange: number;
+  avgFirstResponseMinutes: number | null;
+  slaAttainmentRate: number | null;
+  trend: SupportTicketTrendResponse[];
+  agentStats: SupportTicketAgentStatsResponse[];
+};
+
 export type FeedbackRating = "HELPFUL" | "NOT_HELPFUL";
 
 export type AnswerFeedbackResponse = {
@@ -298,7 +372,13 @@ export type AnswerFeedbackResponse = {
   updatedAt: string;
 };
 
+export type BusinessFeedbackLinksResponse = {
+  issues: KnowledgeIssueResponse[];
+  feedbacks: AnswerFeedbackResponse[];
+};
+
 export type KnowledgeIssueResponse = {
+  rechecks: KnowledgeIssueRecheckResponse[];
   id: string;
   knowledgeBaseId: string;
   conversationId: string | null;
@@ -319,6 +399,16 @@ export type KnowledgeIssueResponse = {
   resolvedAt: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type KnowledgeIssueRecheckResponse = {
+  id: string;
+  issueId: string;
+  actorId: string;
+  outcome: "CONTEXT_FOUND" | "NO_CONTEXT" | "FAILED";
+  summary: string;
+  hitCount: number;
+  createdAt: string;
 };
 
 export type ChatStreamMeta = {

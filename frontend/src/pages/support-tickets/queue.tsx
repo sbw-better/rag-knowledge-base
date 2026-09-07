@@ -1,4 +1,4 @@
-import { CheckSquare, Search, Square, UserCheck, X } from "lucide-react";
+import { CheckSquare, Search, Sparkles, Square, UserCheck, X } from "lucide-react";
 import { Badge, Button, EmptyState, ErrorMessage, Input, Pagination, Panel } from "../../components/ui";
 import { cn } from "../../lib/utils";
 import type { SupportTicketPriority, SupportTicketResponse, SupportTicketStatus } from "../../types";
@@ -29,6 +29,8 @@ export function TicketQueue({
   selectedIds,
   batchBusy,
   canAssignToMe,
+  canGenerateReply,
+  batchAllowedStatuses,
   onKeywordChange,
   onStatusChange,
   onPriorityChange,
@@ -38,6 +40,7 @@ export function TicketQueue({
   onTogglePageSelected,
   onClearSelected,
   onBatchAssignToMe,
+  onBatchGenerateReplies,
   onBatchStatusChange,
   onOpen,
   onPageChange
@@ -58,6 +61,8 @@ export function TicketQueue({
   selectedIds: string[];
   batchBusy: boolean;
   canAssignToMe: boolean;
+  canGenerateReply: boolean;
+  batchAllowedStatuses: SupportTicketStatus[];
   onKeywordChange: (value: string) => void;
   onStatusChange: (value: SupportTicketStatus | "") => void;
   onPriorityChange: (value: SupportTicketPriority | "") => void;
@@ -67,6 +72,7 @@ export function TicketQueue({
   onTogglePageSelected: (checked: boolean) => void;
   onClearSelected: () => void;
   onBatchAssignToMe: () => void;
+  onBatchGenerateReplies: () => void;
   onBatchStatusChange: (status: SupportTicketStatus) => void;
   onOpen: (id: string) => void;
   onPageChange: (page: number) => void;
@@ -118,9 +124,12 @@ export function TicketQueue({
             disabled={selectableCount === 0}
             busy={batchBusy}
             canAssignToMe={canAssignToMe}
+            canGenerateReply={canGenerateReply}
+            allowedStatuses={batchAllowedStatuses}
             onTogglePage={onTogglePageSelected}
             onClear={onClearSelected}
             onAssignToMe={onBatchAssignToMe}
+            onGenerateReplies={onBatchGenerateReplies}
             onStatusChange={onBatchStatusChange}
           />
         </div>
@@ -156,9 +165,12 @@ function BulkToolbar({
   disabled,
   busy,
   canAssignToMe,
+  canGenerateReply,
+  allowedStatuses,
   onTogglePage,
   onClear,
   onAssignToMe,
+  onGenerateReplies,
   onStatusChange
 }: {
   count: number;
@@ -166,9 +178,12 @@ function BulkToolbar({
   disabled: boolean;
   busy: boolean;
   canAssignToMe: boolean;
+  canGenerateReply: boolean;
+  allowedStatuses: SupportTicketStatus[];
   onTogglePage: (checked: boolean) => void;
   onClear: () => void;
   onAssignToMe: () => void;
+  onGenerateReplies: () => void;
   onStatusChange: (status: SupportTicketStatus) => void;
 }) {
   const hasSelection = count > 0;
@@ -197,16 +212,22 @@ function BulkToolbar({
           <UserCheck className="h-4 w-4" />
           批量接手
         </Button>
-        <Select value="" disabled={!hasSelection || busy} onChange={(value) => value && onStatusChange(value as SupportTicketStatus)}>
-          <option value="">{busy ? "处理中..." : "批量状态"}</option>
+        <Button type="button" variant="secondary" size="sm" disabled={!hasSelection || busy || !canGenerateReply} onClick={onGenerateReplies}>
+          <Sparkles className="h-4 w-4" />
+          生成回复
+        </Button>
+        <div className="col-span-2">
+          <Select value="" disabled={!hasSelection || busy || allowedStatuses.length === 0} onChange={(value) => value && onStatusChange(value as SupportTicketStatus)}>
+          <option value="">{busy ? "处理中..." : allowedStatuses.length === 0 && hasSelection ? "无可流转" : "批量状态"}</option>
           {statusOptions
-            .filter((item): item is SupportTicketStatus => Boolean(item))
+            .filter((item): item is SupportTicketStatus => item !== "" && allowedStatuses.includes(item))
             .map((item) => (
               <option key={item} value={item} disabled={!hasSelection || busy}>
                 {statusLabels[item]}
               </option>
             ))}
-        </Select>
+          </Select>
+        </div>
       </div>
     </div>
   );

@@ -10,4 +10,15 @@
           AND user_id = #{userId}
         LIMIT 1
     </select>
+
+    <select id="selectByBusiness" resultType="com.example.rag.domain.AnswerFeedback">
+        SELECT *
+        FROM answer_feedback
+        WHERE tenant_id = #{tenantId}
+          AND knowledge_base_id = #{knowledgeBaseId}
+          AND business_module = #{businessModule}
+          AND business_entity_id = #{businessEntityId}
+        ORDER BY updated_at DESC
+        LIMIT #{limit}
+    </select>
 </mapper>

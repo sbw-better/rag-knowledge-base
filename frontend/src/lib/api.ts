@@ -6,6 +6,7 @@ import type {
   AnswerFeedbackResponse,
   AuthResponse,
   AdminUserResponse,
+  BusinessFeedbackLinksResponse,
   ChatResponse,
   ChatStreamError,
   ChatStreamMeta,
@@ -27,6 +28,7 @@ import type {
   SupportTicketPriority,
   SupportTicketRequest,
   SupportTicketResponse,
+  SupportTicketStatsResponse,
   SupportTicketStatus,
   TenantRequest,
   TenantResponse,
@@ -428,6 +430,14 @@ export const api = {
     return apiClient.post<unknown, KnowledgeIssueResponse>(`/knowledge-feedback/issues/${id}/resolve`, { resolutionNote });
   },
 
+  recheckKnowledgeIssue(id: string) {
+    return apiClient.post<unknown, KnowledgeIssueResponse>(`/knowledge-feedback/issues/${id}/recheck`);
+  },
+
+  getBusinessFeedbackLinks(params: { knowledgeBaseId: string; businessModule: string; businessEntityId: string; limit?: number }) {
+    return apiClient.get<unknown, BusinessFeedbackLinksResponse>("/knowledge-feedback/business-links", { params });
+  },
+
   async listSupportTicketsPage(params: PageParams & {
     knowledgeBaseId?: string;
     status?: SupportTicketStatus | "";
@@ -441,6 +451,10 @@ export const api = {
 
   getSupportTicket(id: string) {
     return apiClient.get<unknown, SupportTicketResponse>(`/support-tickets/${id}`);
+  },
+
+  getSupportTicketStats(days?: number) {
+    return apiClient.get<unknown, SupportTicketStatsResponse>("/support-tickets/stats", { params: { days } });
   },
 
   async listSupportTicketEvents(id: string) {
@@ -464,8 +478,24 @@ export const api = {
     return apiClient.post<unknown, SupportTicketResponse>(`/support-tickets/${id}/status`, { status, note });
   },
 
+  closeSupportTicket(id: string, note?: string) {
+    return apiClient.post<unknown, SupportTicketResponse>(`/support-tickets/${id}/close`, { note });
+  },
+
+  reopenSupportTicket(id: string, note?: string) {
+    return apiClient.post<unknown, SupportTicketResponse>(`/support-tickets/${id}/reopen`, { note });
+  },
+
   addSupportTicketNote(id: string, content: string) {
     return apiClient.post<unknown, SupportTicketEventResponse>(`/support-tickets/${id}/notes`, { content });
+  },
+
+  addSupportTicketCustomerMessage(id: string, content: string) {
+    return apiClient.post<unknown, SupportTicketEventResponse>(`/support-tickets/${id}/customer-messages`, { content });
+  },
+
+  sendSupportTicketReply(id: string, content: string) {
+    return apiClient.post<unknown, SupportTicketResponse>(`/support-tickets/${id}/outgoing-replies`, { content });
   },
 
   createDemoSupportTickets(knowledgeBaseId: string) {

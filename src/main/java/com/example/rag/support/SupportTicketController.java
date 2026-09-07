@@ -4,6 +4,7 @@ import com.example.rag.common.ApiResponse;
 import com.example.rag.common.PageRequestParams;
 import com.example.rag.common.PageResponse;
 import com.example.rag.support.dto.AddTicketNoteRequest;
+import com.example.rag.support.dto.AddTicketMessageRequest;
 import com.example.rag.support.dto.AssignTicketRequest;
 import com.example.rag.support.dto.ChangeTicketStatusRequest;
 import com.example.rag.support.dto.CreateDemoTicketsRequest;
@@ -11,6 +12,8 @@ import com.example.rag.support.dto.GenerateTicketReplyRequest;
 import com.example.rag.support.dto.SupportTicketEventResponse;
 import com.example.rag.support.dto.SupportTicketRequest;
 import com.example.rag.support.dto.SupportTicketResponse;
+import com.example.rag.support.dto.SupportTicketActionRequest;
+import com.example.rag.support.dto.SupportTicketStatsResponse;
 import com.example.rag.support.dto.TicketAssistantReplyResponse;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -49,6 +52,11 @@ public class SupportTicketController {
         return ApiResponse.ok(ticketService.list(knowledgeBaseId, status, priority, mine, overdue, PageRequestParams.of(page, pageSize, keyword)));
     }
 
+    @GetMapping("/stats")
+    ApiResponse<SupportTicketStatsResponse> stats(@RequestParam(required = false) Integer days) {
+        return ApiResponse.ok(ticketService.getStats(days));
+    }
+
     @GetMapping("/{id}")
     ApiResponse<SupportTicketResponse> get(@PathVariable Long id) {
         return ApiResponse.ok(ticketService.get(id));
@@ -79,9 +87,29 @@ public class SupportTicketController {
         return ApiResponse.ok(ticketService.changeStatus(id, request));
     }
 
+    @PostMapping("/{id}/close")
+    ApiResponse<SupportTicketResponse> close(@PathVariable Long id, @RequestBody(required = false) SupportTicketActionRequest request) {
+        return ApiResponse.ok(ticketService.close(id, request));
+    }
+
+    @PostMapping("/{id}/reopen")
+    ApiResponse<SupportTicketResponse> reopen(@PathVariable Long id, @RequestBody(required = false) SupportTicketActionRequest request) {
+        return ApiResponse.ok(ticketService.reopen(id, request));
+    }
+
     @PostMapping("/{id}/notes")
     ApiResponse<SupportTicketEventResponse> addInternalNote(@PathVariable Long id, @Valid @RequestBody AddTicketNoteRequest request) {
         return ApiResponse.ok(ticketService.addInternalNote(id, request));
+    }
+
+    @PostMapping("/{id}/customer-messages")
+    ApiResponse<SupportTicketEventResponse> addCustomerMessage(@PathVariable Long id, @Valid @RequestBody AddTicketMessageRequest request) {
+        return ApiResponse.ok(ticketService.addCustomerMessage(id, request));
+    }
+
+    @PostMapping("/{id}/outgoing-replies")
+    ApiResponse<SupportTicketResponse> sendOutgoingReply(@PathVariable Long id, @Valid @RequestBody AddTicketMessageRequest request) {
+        return ApiResponse.ok(ticketService.sendOutgoingReply(id, request));
     }
 
     @PostMapping("/demo")

@@ -1,4 +1,4 @@
-import { GitBranch, NotebookPen, UserCheck, UserMinus } from "lucide-react";
+import { Archive, GitBranch, LockKeyhole, NotebookPen, RotateCcw, UserCheck, UserMinus } from "lucide-react";
 import { Button, Textarea } from "../../components/ui";
 import { formatDateTime } from "../../lib/utils";
 import type { SupportTicketEventResponse, SupportTicketResponse, SupportTicketStatus } from "../../types";
@@ -13,6 +13,8 @@ export function TicketSideRail({
   onAssignToMe,
   onUnassign,
   onStatusChange,
+  onClose,
+  onReopen,
   onNoteChange,
   onAddNote
 }: {
@@ -25,6 +27,8 @@ export function TicketSideRail({
   onAssignToMe: () => void;
   onUnassign: () => void;
   onStatusChange: (status: SupportTicketStatus) => void;
+  onClose: () => void;
+  onReopen: () => void;
   onNoteChange: (value: string) => void;
   onAddNote: () => void;
 }) {
@@ -38,6 +42,8 @@ export function TicketSideRail({
         onAssignToMe={onAssignToMe}
         onUnassign={onUnassign}
         onStatusChange={onStatusChange}
+        onClose={onClose}
+        onReopen={onReopen}
         onNoteChange={onNoteChange}
         onAddNote={onAddNote}
       />
@@ -54,6 +60,8 @@ function ActionPanel({
   onAssignToMe,
   onUnassign,
   onStatusChange,
+  onClose,
+  onReopen,
   onNoteChange,
   onAddNote
 }: {
@@ -64,9 +72,14 @@ function ActionPanel({
   onAssignToMe: () => void;
   onUnassign: () => void;
   onStatusChange: (status: SupportTicketStatus) => void;
+  onClose: () => void;
+  onReopen: () => void;
   onNoteChange: (value: string) => void;
   onAddNote: () => void;
 }) {
+  const statusChoices = workflowStatuses.filter((item) => ticket.allowedStatuses.includes(item) && item !== "CLOSED");
+  const canWorkActiveTicket = ticket.canWork && ticket.status !== "CLOSED";
+
   return (
     <section className="rounded-lg border border-slate-200 bg-white shadow-sm shadow-slate-900/5">
       <div className="border-b border-slate-100 px-4 py-3">
@@ -76,15 +89,22 @@ function ActionPanel({
         </h3>
       </div>
       <div className="space-y-5 p-4">
+        {!canWorkActiveTicket ? (
+          <div className="flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
+            <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+            <p>{ticket.status === "CLOSED" ? "工单已关闭，需要重开后才能继续处理。" : "你可以查看这个工单；处理、回复和流转需要知识库资料维护权限。"}</p>
+          </div>
+        ) : null}
+
         <div>
           <p className="text-xs text-slate-400">当前负责人</p>
           <p className="mt-1 truncate text-base font-semibold text-slate-900">{ticket.assigneeName || "未分配"}</p>
           <div className="mt-3 grid grid-cols-2 gap-2">
-            <Button className="w-full" size="sm" variant="secondary" disabled={busy || !currentUserId || ticket.assigneeId === currentUserId} onClick={onAssignToMe}>
+            <Button className="w-full" size="sm" variant="secondary" disabled={busy || !canWorkActiveTicket || !currentUserId || ticket.assigneeId === currentUserId} onClick={onAssignToMe}>
               <UserCheck className="h-4 w-4" />
               分配给我
             </Button>
-            <Button className="w-full" size="sm" variant="ghost" disabled={busy || !ticket.assigneeId} onClick={onUnassign}>
+            <Button className="w-full" size="sm" variant="ghost" disabled={busy || !canWorkActiveTicket || !ticket.assigneeId} onClick={onUnassign}>
               <UserMinus className="h-4 w-4" />
               取消负责人
             </Button>
@@ -94,18 +114,29 @@ function ActionPanel({
         <div>
           <p className="mb-2 text-xs text-slate-400">状态流转</p>
           <div className="grid grid-cols-2 gap-2">
-            {workflowStatuses.map((item) => (
+            {statusChoices.map((item) => (
               <Button key={item} className="w-full" size="sm" variant={ticket.status === item ? "primary" : "secondary"} disabled={busy || ticket.status === item} onClick={() => onStatusChange(item)}>
                 {statusLabels[item]}
               </Button>
             ))}
           </div>
+          {statusChoices.length === 0 ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-500">当前状态暂无可用流转。</p> : null}
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <Button className="w-full" size="sm" variant="danger" disabled={busy || !ticket.canClose} onClick={onClose}>
+              <Archive className="h-4 w-4" />
+              关闭
+            </Button>
+            <Button className="w-full" size="sm" variant="secondary" disabled={busy || !ticket.canReopen} onClick={onReopen}>
+              <RotateCcw className="h-4 w-4" />
+              重开
+            </Button>
+          </div>
         </div>
 
         <div>
           <p className="mb-2 text-xs text-slate-400">内部备注</p>
-          <Textarea className="min-h-24 resize-none" value={internalNote} onChange={(event) => onNoteChange(event.target.value)} placeholder="记录处理判断、电话沟通或下一步动作。" />
-          <Button className="mt-2 w-full" size="sm" disabled={busy || !internalNote.trim()} onClick={onAddNote}>
+          <Textarea className="min-h-24 resize-none" value={internalNote} disabled={!canWorkActiveTicket} onChange={(event) => onNoteChange(event.target.value)} placeholder="记录处理判断、电话沟通或下一步动作。" />
+          <Button className="mt-2 w-full" size="sm" disabled={busy || !canWorkActiveTicket || !internalNote.trim()} onClick={onAddNote}>
             <NotebookPen className="h-4 w-4" />
             添加备注
           </Button>
@@ -154,6 +185,12 @@ function eventText(event: SupportTicketEventResponse) {
   }
   if (event.eventType === "REPLY_SAVED") {
     return "已保存客服回复草稿。";
+  }
+  if (event.eventType === "CUSTOMER_MESSAGE") {
+    return "客户补充了一条信息。";
+  }
+  if (event.eventType === "AGENT_REPLY_SENT") {
+    return "客服回复已记录为外发消息。";
   }
   if (event.eventType === "INTERNAL_NOTE") {
     return "新增一条内部处理记录。";

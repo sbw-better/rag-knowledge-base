@@ -15,11 +15,16 @@ export const auditActionLabels: Record<string, string> = {
   TASK_CANCEL: "取消任务",
   ANSWER_FEEDBACK_SUBMIT: "提交回答反馈",
   KNOWLEDGE_ISSUE_RESOLVE: "解决知识缺口",
+  KNOWLEDGE_ISSUE_RECHECK: "复检知识缺口",
   SUPPORT_TICKET_CREATE: "创建售后工单",
   SUPPORT_TICKET_UPDATE: "更新售后工单",
   SUPPORT_TICKET_ASSIGN: "分配售后工单",
   SUPPORT_TICKET_STATUS_CHANGE: "流转工单状态",
+  SUPPORT_TICKET_CLOSE: "关闭售后工单",
+  SUPPORT_TICKET_REOPEN: "重开售后工单",
   SUPPORT_TICKET_NOTE: "添加工单备注",
+  SUPPORT_TICKET_CUSTOMER_MESSAGE: "记录客户消息",
+  SUPPORT_TICKET_REPLY_SEND: "发送客服回复",
   SUPPORT_TICKET_DEMO_CREATE: "生成演示工单",
   SUPPORT_TICKET_AI_REPLY: "生成工单回复"
 };

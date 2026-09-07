@@ -25,5 +25,6 @@ public record KnowledgeIssueResponse(
         String resolvedBy,
         Instant resolvedAt,
         Instant createdAt,
-        Instant updatedAt) {
+        Instant updatedAt,
+        java.util.List<KnowledgeIssueRecheckResponse> rechecks) {
 }

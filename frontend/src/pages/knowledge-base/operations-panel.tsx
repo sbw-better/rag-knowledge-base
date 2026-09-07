@@ -7,6 +7,7 @@ import { api } from "../../lib/api";
 import { cn, formatDateTime, shortId } from "../../lib/utils";
 import type { KnowledgeIssueResponse, TaskListItem, TaskResponse, TaskStatsResponse } from "../../types";
 import { statusTone } from "./shared";
+import { KnowledgeIssueRechecks } from "../../components/KnowledgeIssueRechecks";
 
 const TASK_PAGE_SIZE = 8;
 const ISSUE_PAGE_SIZE = 6;
@@ -116,6 +117,8 @@ export function OperationsPanel({ kb }: { kb: { id: string; name: string; canMan
     mutationFn: ({ id, note }: { id: string; note?: string }) => api.resolveKnowledgeIssue(id, note),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["knowledge-issues", kb.id] });
+      queryClient.invalidateQueries({ queryKey: ["support-ticket-feedback-links"] });
+      queryClient.invalidateQueries({ queryKey: ["support-ticket-events"] });
     }
   });
   const selectedTaskQuery = useQuery({
@@ -457,7 +460,7 @@ function KnowledgeIssueRow({ issue, busy, onResolve }: { issue: KnowledgeIssueRe
         {issue.status === "OPEN" ? (
           <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={onResolve}>
             <Check className="h-4 w-4" />
-            已处理
+            处理并复检
           </Button>
         ) : null}
       </div>
@@ -473,6 +476,7 @@ function KnowledgeIssueRow({ issue, busy, onResolve }: { issue: KnowledgeIssueRe
         {issue.businessEntityId ? <span>{issue.businessEntityId}</span> : null}
         {issue.resolutionNote ? <span className="text-emerald-600">{issue.resolutionNote}</span> : null}
       </div>
+      <KnowledgeIssueRechecks issue={issue} canRecheck={!busy} />
     </article>
   );
 }

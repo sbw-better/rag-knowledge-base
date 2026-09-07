@@ -13,6 +13,7 @@ import { Button } from "../components/ui";
 import { api } from "../lib/api";
 import { clearAuth } from "../lib/auth";
 import { cn } from "../lib/utils";
+import { getWorkspaceCapabilities } from "../lib/workspace-permissions";
 import type { UserResponse } from "../types";
 import { headerCopy, MobileServiceNav, SidebarNavigation } from "./workspace-navigation";
 
@@ -21,12 +22,13 @@ export default function WorkspaceLayout({ user }: { user: UserResponse | null })
   const location = useLocation();
   const queryClient = useQueryClient();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("ragkb.sidebarCollapsed") === "true");
-  const listQuery = useQuery({
+  const knowledgeBasesQuery = useQuery({
     queryKey: ["knowledge-bases"],
-    queryFn: api.listKnowledgeBases
+    queryFn: api.listKnowledgeBases,
+    enabled: Boolean(user)
   });
-  const knowledgeBases = Array.isArray(listQuery.data) ? listQuery.data : [];
-  const isAdmin = Boolean(user?.roles.includes("ADMIN"));
+  const knowledgeBases = Array.isArray(knowledgeBasesQuery.data) ? knowledgeBasesQuery.data : [];
+  const capabilities = getWorkspaceCapabilities(user, knowledgeBases);
   const header = headerCopy(location.pathname);
 
   useEffect(() => {
@@ -70,7 +72,7 @@ export default function WorkspaceLayout({ user }: { user: UserResponse | null })
           </div>
         </div>
 
-        <SidebarNavigation collapsed={sidebarCollapsed} isAdmin={isAdmin} knowledgeBases={knowledgeBases} />
+        <SidebarNavigation collapsed={sidebarCollapsed} capabilities={capabilities} />
       </aside>
 
       <main className="min-w-0 max-w-full flex-1 overflow-x-hidden pb-20 lg:pb-0">
@@ -86,7 +88,7 @@ export default function WorkspaceLayout({ user }: { user: UserResponse | null })
         </header>
         <Outlet />
       </main>
-      <MobileServiceNav isAdmin={isAdmin} />
+      <MobileServiceNav capabilities={capabilities} />
     </div>
   );
 }

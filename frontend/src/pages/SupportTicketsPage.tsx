@@ -1,8 +1,8 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, RefreshCw, Sparkles } from "lucide-react";
+import { CheckCircle2, Plus, RefreshCw, Sparkles, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Button, EmptyState, ErrorMessage, PageHeader, Panel } from "../components/ui";
+import { Badge, Button, EmptyState, ErrorMessage, Modal, PageHeader, Panel } from "../components/ui";
 import { api } from "../lib/api";
 import type {
   ChatResponse,
@@ -13,6 +13,31 @@ import type {
 } from "../types";
 import { CreateTicketModal, TicketDetailMain, TicketQueue, TicketSideRail, type TicketQueueStats } from "./support-tickets/components";
 import { PAGE_SIZE, statusLabels } from "./support-tickets/constants";
+
+type BatchSupportTicketStatus = Exclude<SupportTicketStatus, "CLOSED">;
+
+type BatchAction = { type: "assign-to-me" } | { type: "status"; status: SupportTicketStatus } | { type: "generate-replies" };
+
+type BatchResultItem = {
+  id: string;
+  ticketNo: string;
+  issueSummary: string;
+  success: boolean;
+  message: string;
+  updatedTicket?: SupportTicketResponse;
+  chat?: ChatResponse;
+};
+
+type BatchResult = {
+  title: string;
+  items: BatchResultItem[];
+};
+
+const batchStatusOptions: BatchSupportTicketStatus[] = ["OPEN", "IN_PROGRESS", "WAITING_CUSTOMER", "RESOLVED"];
+
+function isBatchSupportTicketStatus(status: SupportTicketStatus): status is BatchSupportTicketStatus {
+  return status !== "CLOSED";
+}
 
 export default function SupportTicketsPage() {
   const navigate = useNavigate();
@@ -29,8 +54,10 @@ export default function SupportTicketsPage() {
   const [instruction, setInstruction] = useState("");
   const [draftReply, setDraftReply] = useState("");
   const [internalNote, setInternalNote] = useState("");
+  const [customerMessage, setCustomerMessage] = useState("");
   const [lastChat, setLastChat] = useState<ChatResponse | null>(null);
   const [selectedTicketIds, setSelectedTicketIds] = useState<string[]>([]);
+  const [batchResult, setBatchResult] = useState<BatchResult | null>(null);
 
   const meQuery = useQuery({
     queryKey: ["me"],
@@ -93,6 +120,18 @@ export default function SupportTicketsPage() {
     enabled: Boolean(ticketId)
   });
 
+  const feedbackLinksQuery = useQuery({
+    queryKey: ["support-ticket-feedback-links", ticketId],
+    queryFn: () =>
+      api.getBusinessFeedbackLinks({
+        knowledgeBaseId: ticket?.knowledgeBaseId || "",
+        businessModule: "SUPPORT_TICKET",
+        businessEntityId: ticketId || "",
+        limit: 8
+      }),
+    enabled: Boolean(ticketId && ticket?.knowledgeBaseId)
+  });
+
   useEffect(() => {
     setPage(1);
   }, [keyword, status, priority, mineOnly, overdueOnly]);
@@ -107,6 +146,7 @@ export default function SupportTicketsPage() {
     setLastChat(null);
     setInstruction("");
     setInternalNote("");
+    setCustomerMessage("");
   }, [ticket?.id, ticket?.latestAiReply]);
 
   const createMutation = useMutation({
@@ -129,11 +169,12 @@ export default function SupportTicketsPage() {
   });
 
   const replyMutation = useMutation({
-    mutationFn: () => api.generateSupportTicketReply(ticketId || "", instruction.trim()),
+    mutationFn: (overrideInstruction?: string) => api.generateSupportTicketReply(ticketId || "", overrideInstruction ?? instruction.trim()),
     onSuccess: (result) => {
       setDraftReply(result.ticket.latestAiReply ?? result.chat.answer);
       setLastChat(result.chat);
       refreshTickets(result.ticket.id);
+      queryClient.invalidateQueries({ queryKey: ["support-ticket-feedback-links", result.ticket.id] });
       queryClient.setQueryData(["support-ticket", result.ticket.id], result.ticket);
     }
   });
@@ -162,6 +203,22 @@ export default function SupportTicketsPage() {
     }
   });
 
+  const closeMutation = useMutation({
+    mutationFn: () => api.closeSupportTicket(ticketId || "", "关闭工单"),
+    onSuccess: (updated) => {
+      refreshTickets(updated.id);
+      queryClient.setQueryData(["support-ticket", updated.id], updated);
+    }
+  });
+
+  const reopenMutation = useMutation({
+    mutationFn: () => api.reopenSupportTicket(ticketId || "", "重开工单"),
+    onSuccess: (updated) => {
+      refreshTickets(updated.id);
+      queryClient.setQueryData(["support-ticket", updated.id], updated);
+    }
+  });
+
   const noteMutation = useMutation({
     mutationFn: () => api.addSupportTicketNote(ticketId || "", internalNote.trim()),
     onSuccess: () => {
@@ -170,22 +227,58 @@ export default function SupportTicketsPage() {
     }
   });
 
-  const batchMutation = useMutation({
-    mutationFn: async (action: { type: "assign-to-me" } | { type: "status"; status: SupportTicketStatus }) => {
-      if (selectedTicketIds.length === 0) {
-        return [];
-      }
-      if (action.type === "assign-to-me") {
-        if (!currentUserId) {
-          throw new Error("当前登录用户信息还在加载，请稍后再试。");
-        }
-        return Promise.all(selectedTicketIds.map((id) => api.assignSupportTicket(id, currentUserId, "批量接手处理")));
-      }
-      return Promise.all(selectedTicketIds.map((id) => api.changeSupportTicketStatus(id, action.status, `批量调整为${statusLabels[action.status]}`)));
-    },
+  const customerMessageMutation = useMutation({
+    mutationFn: () => api.addSupportTicketCustomerMessage(ticketId || "", customerMessage.trim()),
     onSuccess: () => {
+      setCustomerMessage("");
+      refreshTickets(ticketId);
+    }
+  });
+
+  const sendReplyMutation = useMutation({
+    mutationFn: () => api.sendSupportTicketReply(ticketId || "", draftReply.trim()),
+    onSuccess: (updated) => {
+      refreshTickets(updated.id);
+      queryClient.setQueryData(["support-ticket", updated.id], updated);
+    }
+  });
+
+  const resolveIssueMutation = useMutation({
+    mutationFn: ({ id, note }: { id: string; note?: string }) => api.resolveKnowledgeIssue(id, note),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["support-ticket-feedback-links", ticketId] });
+      queryClient.invalidateQueries({ queryKey: ["support-ticket-events", ticketId] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-issues"] });
+      queryClient.invalidateQueries({ queryKey: ["support-ticket-stats"] });
+    }
+  });
+
+  const batchMutation = useMutation({
+    mutationFn: async (action: BatchAction): Promise<BatchResult> => {
+      const actionTickets = [...selectedTickets];
+      const title = batchActionTitle(action);
+      if (actionTickets.length === 0) {
+        return { title, items: [] };
+      }
+      const items = await Promise.all(actionTickets.map((item) => runBatchTicketAction(item, action, currentUserId)));
+      return { title, items };
+    },
+    onSuccess: (result) => {
       const activeTicketId = selectedTicketIds.includes(ticketId || "") ? ticketId : undefined;
-      setSelectedTicketIds([]);
+      const failedIds = result.items.filter((item) => !item.success).map((item) => item.id);
+      result.items.forEach((item) => {
+        if (item.updatedTicket) {
+          queryClient.setQueryData(["support-ticket", item.updatedTicket.id], item.updatedTicket);
+          if (item.updatedTicket.id === ticketId && item.updatedTicket.latestAiReply) {
+            setDraftReply(item.updatedTicket.latestAiReply);
+          }
+        }
+        if (item.chat && item.id === ticketId) {
+          setLastChat(item.chat);
+        }
+      });
+      setSelectedTicketIds(failedIds);
+      setBatchResult(result);
       refreshTickets(activeTicketId);
     }
   });
@@ -193,6 +286,7 @@ export default function SupportTicketsPage() {
   function refreshTickets(activeTicketId?: string) {
     queryClient.invalidateQueries({ queryKey: ["support-tickets"] });
     queryClient.invalidateQueries({ queryKey: ["support-ticket-summary"] });
+    queryClient.invalidateQueries({ queryKey: ["support-ticket-stats"] });
     queryClient.invalidateQueries({ queryKey: ["support-ticket"] });
     if (activeTicketId) {
       queryClient.invalidateQueries({ queryKey: ["support-ticket-events", activeTicketId] });
@@ -202,8 +296,28 @@ export default function SupportTicketsPage() {
   }
 
   const currentUserId = meQuery.data?.id ?? null;
+  const selectedTickets = tickets.filter((item) => selectedTicketIds.includes(item.id));
+  const batchAllowedStatuses =
+    selectedTickets.length === 0
+      ? []
+      : selectedTickets
+          .map((item) => item.allowedStatuses.filter(isBatchSupportTicketStatus))
+          .reduce<BatchSupportTicketStatus[]>((allowed, item) => allowed.filter((statusItem) => item.includes(statusItem)), batchStatusOptions);
+  const canBatchAssignToMe = Boolean(currentUserId) && selectedTickets.length > 0 && selectedTickets.every((item) => item.canWork && item.status !== "CLOSED");
+  const canBatchGenerateReply = selectedTickets.length > 0 && selectedTickets.every((item) => item.canWork && item.status !== "CLOSED");
   const actionError =
-    detailQuery.error || replyMutation.error || saveReplyMutation.error || assignMutation.error || statusMutation.error || noteMutation.error || batchMutation.error;
+    detailQuery.error ||
+    replyMutation.error ||
+    saveReplyMutation.error ||
+    assignMutation.error ||
+    statusMutation.error ||
+    closeMutation.error ||
+    reopenMutation.error ||
+    noteMutation.error ||
+    customerMessageMutation.error ||
+    sendReplyMutation.error ||
+    resolveIssueMutation.error ||
+    batchMutation.error;
   const visibleTicketIds = tickets.map((item) => item.id);
 
   return (
@@ -254,7 +368,9 @@ export default function SupportTicketsPage() {
           stats={queueStats}
           selectedIds={selectedTicketIds}
           batchBusy={batchMutation.isPending}
-          canAssignToMe={Boolean(currentUserId)}
+          canAssignToMe={canBatchAssignToMe}
+          canGenerateReply={canBatchGenerateReply}
+          batchAllowedStatuses={batchAllowedStatuses}
           onKeywordChange={setKeyword}
           onStatusChange={setStatus}
           onPriorityChange={setPriority}
@@ -266,6 +382,7 @@ export default function SupportTicketsPage() {
           onTogglePageSelected={(checked) => setSelectedTicketIds(checked ? visibleTicketIds : [])}
           onClearSelected={() => setSelectedTicketIds([])}
           onBatchAssignToMe={() => batchMutation.mutate({ type: "assign-to-me" })}
+          onBatchGenerateReplies={() => batchMutation.mutate({ type: "generate-replies" })}
           onBatchStatusChange={(nextStatus) => batchMutation.mutate({ type: "status", status: nextStatus })}
           onOpen={(id) => navigate(`/app/support-tickets/${id}`)}
           onPageChange={setPage}
@@ -284,13 +401,35 @@ export default function SupportTicketsPage() {
               ticket={ticket}
               draftReply={draftReply}
               instruction={instruction}
+              events={eventsQuery.data ?? []}
+              loadingEvents={eventsQuery.isLoading}
+              customerMessage={customerMessage}
+              feedbackLinks={feedbackLinksQuery.data}
+              loadingFeedbackLinks={feedbackLinksQuery.isLoading}
               chat={lastChat}
               generating={replyMutation.isPending}
               saving={saveReplyMutation.isPending}
+              sendingReply={sendReplyMutation.isPending}
+              addingCustomerMessage={customerMessageMutation.isPending}
+              resolvingIssue={resolveIssueMutation.isPending}
               onInstructionChange={setInstruction}
               onDraftReplyChange={setDraftReply}
-              onGenerate={() => replyMutation.mutate()}
+              onCustomerMessageChange={setCustomerMessage}
+              onGenerate={() => replyMutation.mutate(undefined)}
               onSave={() => saveReplyMutation.mutate()}
+              onSendReply={() => sendReplyMutation.mutate()}
+              onAddCustomerMessage={() => customerMessageMutation.mutate()}
+              onResolveIssue={(issueId) => {
+                const note = window.prompt("处理说明，比如已补充哪份资料、调整了哪个知识点。");
+                if (note !== null) {
+                  resolveIssueMutation.mutate({ id: issueId, note: note.trim() || undefined });
+                }
+              }}
+              onRetestIssue={(question) => {
+                const nextInstruction = `请基于已补充或已调整的知识内容，复检这个知识缺口并重新生成客服回复：${question}`;
+                setInstruction(nextInstruction);
+                replyMutation.mutate(nextInstruction);
+              }}
             />
           ) : null}
         </Panel>
@@ -302,10 +441,12 @@ export default function SupportTicketsPage() {
             internalNote={internalNote}
             events={eventsQuery.data ?? []}
             loadingEvents={eventsQuery.isLoading}
-            busy={assignMutation.isPending || statusMutation.isPending || noteMutation.isPending}
+            busy={assignMutation.isPending || statusMutation.isPending || closeMutation.isPending || reopenMutation.isPending || noteMutation.isPending}
             onAssignToMe={() => currentUserId && assignMutation.mutate(currentUserId)}
             onUnassign={() => assignMutation.mutate(null)}
             onStatusChange={(nextStatus) => statusMutation.mutate(nextStatus)}
+            onClose={() => closeMutation.mutate()}
+            onReopen={() => reopenMutation.mutate()}
             onNoteChange={setInternalNote}
             onAddNote={() => noteMutation.mutate()}
           />
@@ -320,6 +461,124 @@ export default function SupportTicketsPage() {
         onClose={() => setCreateOpen(false)}
         onSubmit={(payload) => createMutation.mutate(payload)}
       />
+      <BatchResultModal result={batchResult} onClose={() => setBatchResult(null)} />
+    </div>
+  );
+}
+
+async function runBatchTicketAction(ticket: SupportTicketResponse, action: BatchAction, currentUserId: string | null): Promise<BatchResultItem> {
+  try {
+    if (action.type === "assign-to-me") {
+      if (!currentUserId) {
+        throw new Error("当前登录用户信息还在加载");
+      }
+      if (!ticket.canWork || ticket.status === "CLOSED") {
+        throw new Error("当前工单不可接手");
+      }
+      const updatedTicket = await api.assignSupportTicket(ticket.id, currentUserId, "批量接手处理");
+      return toBatchResultItem(ticket, true, "已接手", updatedTicket);
+    }
+    if (action.type === "status") {
+      if (!ticket.allowedStatuses.includes(action.status)) {
+        throw new Error(`不可流转到${statusLabels[action.status]}`);
+      }
+      const updatedTicket = await api.changeSupportTicketStatus(ticket.id, action.status, `批量调整为${statusLabels[action.status]}`);
+      return toBatchResultItem(ticket, true, `已调整为${statusLabels[action.status]}`, updatedTicket);
+    }
+    if (!ticket.canWork || ticket.status === "CLOSED") {
+      throw new Error("当前工单不可生成回复");
+    }
+    const result = await api.generateSupportTicketReply(ticket.id, "批量生成客服回复，请保持语气简洁、明确下一步处理方式。");
+    return {
+      ...toBatchResultItem(ticket, true, "已生成回复草稿", result.ticket),
+      chat: result.chat
+    };
+  } catch (error) {
+    return toBatchResultItem(ticket, false, readableError(error));
+  }
+}
+
+function toBatchResultItem(ticket: SupportTicketResponse, success: boolean, message: string, updatedTicket?: SupportTicketResponse): BatchResultItem {
+  return {
+    id: ticket.id,
+    ticketNo: ticket.ticketNo,
+    issueSummary: ticket.issueSummary,
+    success,
+    message,
+    updatedTicket
+  };
+}
+
+function batchActionTitle(action: BatchAction) {
+  if (action.type === "assign-to-me") {
+    return "批量接手结果";
+  }
+  if (action.type === "generate-replies") {
+    return "批量生成回复结果";
+  }
+  return `批量状态流转结果：${statusLabels[action.status]}`;
+}
+
+function readableError(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error || "操作失败");
+}
+
+function BatchResultModal({ result, onClose }: { result: BatchResult | null; onClose: () => void }) {
+  if (!result) {
+    return null;
+  }
+  const successCount = result.items.filter((item) => item.success).length;
+  const failedCount = result.items.length - successCount;
+  return (
+    <Modal open={Boolean(result)} title={result.title} description="失败项会保留在队列选择中，方便继续处理或重试。" onClose={onClose}>
+      <div className="space-y-4 p-5">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <SummaryTile label="总数" value={result.items.length} />
+          <SummaryTile label="成功" value={successCount} tone="green" />
+          <SummaryTile label="失败" value={failedCount} tone={failedCount > 0 ? "rose" : "slate"} />
+        </div>
+        {result.items.length === 0 ? (
+          <EmptyState title="没有可处理的工单" description="请先在左侧队列中勾选需要批量处理的工单。" />
+        ) : (
+          <div className="max-h-96 overflow-y-auto rounded-lg border border-slate-200">
+            <div className="divide-y divide-slate-100">
+              {result.items.map((item) => (
+                <div key={item.id} className="flex min-w-0 items-start gap-3 p-3">
+                  <span className="mt-0.5 shrink-0">
+                    {item.success ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <XCircle className="h-4 w-4 text-rose-600" />}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="truncate text-sm font-medium text-slate-900">{item.ticketNo}</p>
+                      <Badge tone={item.success ? "green" : "rose"}>{item.success ? "成功" : "失败"}</Badge>
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-sm leading-5 text-slate-600">{item.issueSummary}</p>
+                    <p className={`mt-1 text-xs ${item.success ? "text-emerald-700" : "text-rose-700"}`}>{item.message}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="flex justify-end">
+          <Button type="button" onClick={onClose}>
+            知道了
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function SummaryTile({ label, value, tone = "slate" }: { label: string; value: number; tone?: "slate" | "green" | "rose" }) {
+  const toneClass = tone === "green" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : tone === "rose" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-slate-200 bg-slate-50 text-slate-800";
+  return (
+    <div className={`rounded-lg border p-3 ${toneClass}`}>
+      <p className="text-xs opacity-75">{label}</p>
+      <p className="mt-1 text-lg font-semibold">{value}</p>
     </div>
   );
 }
